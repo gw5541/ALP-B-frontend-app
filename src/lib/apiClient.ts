@@ -68,7 +68,7 @@ class ApiClient {
 
   // Districts API
   async getDistricts(): Promise<District[]> {
-    const response = await this.client.get<ApiResponse<District[]>>('/districts');
+    const response = await this.client.get('/districts');
     return response.data;
   }
 
@@ -85,7 +85,7 @@ class ApiClient {
     if (params.gender && params.gender !== 'all') queryParams.append('gender', params.gender);
     if (params.ageBucket && params.ageBucket !== 'all') queryParams.append('ageBucket', params.ageBucket);
 
-    const response = await this.client.get<ApiResponse<PopulationTrend>>(
+    const response = await this.client.get(
       `/population/trends/hourly?${queryParams.toString()}`
     );
     return response.data;
@@ -105,7 +105,7 @@ class ApiClient {
     if (params.gender && params.gender !== 'all') queryParams.append('gender', params.gender);
     if (params.ageBucket && params.ageBucket !== 'all') queryParams.append('ageBucket', params.ageBucket);
 
-    const response = await this.client.get<ApiResponse<MonthlyPopulation[]>>(
+    const response = await this.client.get(
       `/population/trends/monthly?${queryParams.toString()}`
     );
     return response.data;
@@ -128,7 +128,7 @@ class ApiClient {
     if (params.gender && params.gender !== 'all') queryParams.append('gender', params.gender);
     if (params.ageBucket && params.ageBucket !== 'all') queryParams.append('ageBucket', params.ageBucket);
 
-    const response = await this.client.get<ApiResponse<PopulationStats[]>>(
+    const response = await this.client.get(
       `/population/stats?${queryParams.toString()}`
     );
     return response.data;
@@ -145,7 +145,7 @@ class ApiClient {
     if (params.from) queryParams.append('from', params.from);
     if (params.to) queryParams.append('to', params.to);
 
-    const response = await this.client.get<ApiResponse<AgeDistribution[]>>(
+    const response = await this.client.get(
       `/population/age-distribution?${queryParams.toString()}`
     );
     return response.data;
@@ -154,7 +154,7 @@ class ApiClient {
   // Population Highlights API
   async getPopulationHighlights(districtId?: number): Promise<PopulationHighlights[]> {
     const queryParams = districtId ? `?districtId=${districtId}` : '';
-    const response = await this.client.get<ApiResponse<PopulationHighlights[]>>(
+    const response = await this.client.get(
       `/population/highlights${queryParams}`
     );
     return response.data;
@@ -162,14 +162,14 @@ class ApiClient {
 
   // User Favorites API
   async getUserFavorites(userId: string): Promise<UserFavorite[]> {
-    const response = await this.client.get<ApiResponse<UserFavorite[]>>(
+    const response = await this.client.get(
       `/users/${userId}/favorites`
     );
     return response.data;
   }
 
   async addUserFavorite(userId: string, districtId: number): Promise<UserFavorite> {
-    const response = await this.client.post<ApiResponse<UserFavorite>>(
+    const response = await this.client.post(
       `/users/${userId}/favorites`,
       { districtId }
     );
