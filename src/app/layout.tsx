@@ -1,14 +1,19 @@
 import './globals.css'
 import { Inter } from 'next/font/google'
+import { ReactNode } from 'react'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
-  title: 'Frontend App',
-  description: 'Next.js frontend application with Tailwind CSS',
+  title: '서울 생활인구 분석',
+  description: 'Seoul Living Population Analytics Dashboard',
 }
 
-export default function RootLayout({ children }) {
+interface RootLayoutProps {
+  children: ReactNode
+}
+
+export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="ko">
       <body className={inter.className}>
