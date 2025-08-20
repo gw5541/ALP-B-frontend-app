@@ -36,11 +36,15 @@ const DistrictDetailPage = () => {
   const [highlights, setHighlights] = useState<PopulationHighlights | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [memo, setMemo] = useState<string>('');
+  const [memoSaved, setMemoSaved] = useState<boolean>(false);
+  const [memoDate, setMemoDate] = useState<string>('');
 
   const filters = parseSearchParams(searchParams);
 
   useEffect(() => {
     loadDistrictInfo();
+    loadMemo();
   }, [districtId]);
 
   useEffect(() => {
@@ -102,6 +106,41 @@ const DistrictDetailPage = () => {
       console.error('Failed to load tab data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMemo = () => {
+    // localStorage에서 메모와 날짜 불러오기
+    const savedMemo = localStorage.getItem(`district-memo-${districtId}`);
+    const savedDate = localStorage.getItem(`district-memo-date-${districtId}`);
+    
+    if (savedMemo) {
+      setMemo(savedMemo);
+    }
+    if (savedDate) {
+      setMemoDate(savedDate);
+    }
+  };
+
+  const saveMemo = () => {
+    // localStorage에 메모와 현재 날짜 저장
+    const currentDate = new Date().toLocaleDateString('ko-KR');
+    localStorage.setItem(`district-memo-${districtId}`, memo);
+    localStorage.setItem(`district-memo-date-${districtId}`, currentDate);
+    setMemoDate(currentDate);
+    setMemoSaved(true);
+    
+    // 3초 후 저장 표시 제거
+    setTimeout(() => {
+      setMemoSaved(false);
+    }, 3000);
+  };
+
+  const handleMemoChange = (value: string) => {
+    // 500자 제한
+    if (value.length <= 500) {
+      setMemo(value);
+      setMemoSaved(false);
     }
   };
 
@@ -267,16 +306,16 @@ const DistrictDetailPage = () => {
             </div>
           </div>
 
-          {/* Main Content Grid */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-            {/* Tab Content */}
-            <div className="xl:col-span-2">
+          {/* Main Content Grid - 2x2 Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* 상단 좌측: 인구 현황 */}
+            <div>
               <Card>
                 {renderTabContent()}
               </Card>
             </div>
 
-            {/* Age Distribution Pyramid */}
+            {/* 상단 우측: 연령대별 인구 분포 */}
             <div>
               <Card title="연령대별 인구 분포">
                 {ageDistribution.length > 0 ? (
@@ -288,29 +327,129 @@ const DistrictDetailPage = () => {
                 )}
               </Card>
             </div>
-          </div>
 
-          {/* Additional Actions */}
-          <div className="mt-8">
-            <Card title="추가 기능">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <a
-                  href="/dashboard"
-                  className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <h4 className="font-semibold text-gray-900 mb-2">대시보드로 돌아가기</h4>
-                  <p className="text-sm text-gray-600">전체 서울시 현황 확인</p>
-                </a>
-                
-                <a
-                  href="/reports/summary"
-                  className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <h4 className="font-semibold text-gray-900 mb-2">요약 보고서</h4>
-                  <p className="text-sm text-gray-600">전체 자치구 비교 분석</p>
-                </a>
-              </div>
-            </Card>
+            {/* 하단 좌측: 분석 메모 */}
+            <div>
+              <Card title="분석 메모">
+                <div className="space-y-4">
+                  {/* 이전 메모 표시 */}
+                  {memo && (
+                    <div className="bg-gray-50 p-3 rounded-md border">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-gray-700">저장된 메모</span>
+                        <span className="text-xs text-gray-500">
+                          {memoDate || new Date().toLocaleDateString('ko-KR')}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                        {memo.length > 150 ? `${memo.substring(0, 150)}...` : memo}
+                      </p>
+                      {memo.length > 150 && (
+                        <button 
+                          onClick={() => {
+                            const element = document.getElementById('memo-textarea');
+                            element?.focus();
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-700 mt-2"
+                        >
+                          전체 보기/수정
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  <textarea
+                    id="memo-textarea"
+                    value={memo}
+                    onChange={(e) => handleMemoChange(e.target.value)}
+                    placeholder="이 자치구에 대한 분석 내용이나 특이사항을 메모해보세요..."
+                    className="w-full h-32 p-3 border border-gray-300 rounded-md resize-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm"
+                  />
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs text-gray-500">
+                      {memo.length}/500자
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      {memoSaved && (
+                        <span className="text-xs text-green-600 flex items-center">
+                          <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          저장됨
+                        </span>
+                      )}
+                      
+                      <button
+                        onClick={saveMemo}
+                        className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
+                      >
+                        저장
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="text-xs text-gray-400 border-t pt-2">
+                    💡 메모는 브라우저에 자동 저장되며, 각 자치구별로 개별 관리됩니다.
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {/* 하단 우측: 추가 기능 */}
+            <div>
+              <Card title="추가 기능">
+                <div className="space-y-4">
+                  <a
+                    href="/dashboard"
+                    className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <h4 className="font-semibold text-gray-900 mb-2">대시보드로 돌아가기</h4>
+                    <p className="text-sm text-gray-600">전체 서울시 현황 확인</p>
+                  </a>
+                  
+                  <a
+                    href="/reports/summary"
+                    className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <h4 className="font-semibold text-gray-900 mb-2">요약 보고서</h4>
+                    <p className="text-sm text-gray-600">관심 자치구 비교 분석</p>
+                  </a>
+
+                  {/* 추가 액션들 */}
+                  <div className="space-y-2 pt-2 border-t border-gray-200">
+                    <button
+                      onClick={() => window.print()}
+                      className="w-full p-3 text-left border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <svg className="w-4 h-4 mr-2 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                        </svg>
+                        <span className="text-sm font-medium">페이지 인쇄</span>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        const url = window.location.href;
+                        navigator.clipboard.writeText(url);
+                        alert('페이지 링크가 복사되었습니다!');
+                      }}
+                      className="w-full p-3 text-left border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center">
+                        <svg className="w-4 h-4 mr-2 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                        </svg>
+                        <span className="text-sm font-medium">링크 공유</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </Card>
+            </div>
           </div>
         </main>
       </div>

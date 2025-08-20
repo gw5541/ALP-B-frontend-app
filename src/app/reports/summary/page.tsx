@@ -18,14 +18,19 @@ import {
 } from '@/lib/types';
 import { apiClient } from '@/lib/apiClient';
 import { getToday, getLastMonth, getErrorMessage, parseSearchParams } from '@/lib/utils';
+import { DISTRICTS } from '@/components/common/SeoulMap';
 
 type ChartMode = 'hourly' | 'pyramid';
+
+type TimePeriod = 'daily' | 'monthly' | 'yearly';
 
 const ReportsSummaryPage = () => {
   const searchParams = useSearchParams();
   const [districts, setDistricts] = useState<District[]>([]);
+  const [favoriteDistricts, setFavoriteDistricts] = useState<(number | null)[]>([null, null, null]);
   const [monthlyStats, setMonthlyStats] = useState<PopulationStats[]>([]);
   const [chartMode, setChartMode] = useState<ChartMode>('hourly');
+  const [timePeriod, setTimePeriod] = useState<TimePeriod>('daily');
   const [hourlyData, setHourlyData] = useState<PopulationTrend[]>([]);
   const [ageDistribution, setAgeDistribution] = useState<AgeDistribution[]>([]);
   const [loading, setLoading] = useState(false);
@@ -36,12 +41,13 @@ const ReportsSummaryPage = () => {
 
   useEffect(() => {
     loadDistricts();
+    loadFavoriteDistricts();
     loadMonthlyStats();
   }, [filters]);
 
   useEffect(() => {
     loadChartData();
-  }, [chartMode, filters]);
+  }, [chartMode, timePeriod, filters]);
 
   const loadDistricts = async () => {
     try {
@@ -49,6 +55,19 @@ const ReportsSummaryPage = () => {
       setDistricts(districtsData);
     } catch (err) {
       console.error('Failed to load districts:', err);
+    }
+  };
+
+  const loadFavoriteDistricts = () => {
+    // 대시보드에서 저장된 관심 지역을 localStorage에서 불러오기
+    try {
+      const saved = localStorage.getItem('favoriteDistricts');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setFavoriteDistricts(parsed);
+      }
+    } catch (err) {
+      console.error('Failed to load favorite districts:', err);
     }
   };
 
@@ -188,7 +207,36 @@ const ReportsSummaryPage = () => {
           {/* Header Section */}
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">요약 보고서</h1>
-            <p className="text-gray-600">서울시 전체 자치구의 생활인구 현황을 한눈에 확인하세요</p>
+            <p className="text-gray-600">관심 자치구의 생활인구 현황을 한눈에 확인하세요</p>
+            
+            {/* 현재 관심 지역 표시 */}
+            <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <h3 className="text-sm font-semibold text-blue-900 mb-2">현재 관심 지역</h3>
+              <div className="flex flex-wrap gap-2">
+                {favoriteDistricts.filter(id => id !== null).length > 0 ? (
+                  favoriteDistricts
+                    .filter((id): id is number => id !== null)
+                    .map((districtId) => {
+                      const district = DISTRICTS.find(d => d.id === districtId);
+                      return (
+                        <span
+                          key={districtId}
+                          className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800 border border-blue-300"
+                        >
+                          {district?.name || `자치구 ${districtId}`}
+                        </span>
+                      );
+                    })
+                ) : (
+                  <span className="text-sm text-blue-600">
+                    관심 지역이 설정되지 않았습니다. 
+                    <a href="/dashboard" className="underline hover:text-blue-700 ml-1">
+                      대시보드에서 설정하기
+                    </a>
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Filters */}
@@ -247,55 +295,50 @@ const ReportsSummaryPage = () => {
                 </div>
               </div>
 
+              {/* Time Period Toggle for Hourly Chart */}
+              {chartMode === 'hourly' && (
+                <div className="flex items-center justify-center mb-6">
+                  <div className="flex bg-red-50 rounded-lg p-1">
+                    <button
+                      onClick={() => setTimePeriod('daily')}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                        timePeriod === 'daily'
+                          ? 'bg-red-600 text-white shadow-sm'
+                          : 'text-red-600 hover:text-red-700'
+                      }`}
+                    >
+                      일
+                    </button>
+                    <button
+                      onClick={() => setTimePeriod('monthly')}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                        timePeriod === 'monthly'
+                          ? 'bg-red-600 text-white shadow-sm'
+                          : 'text-red-600 hover:text-red-700'
+                      }`}
+                    >
+                      월
+                    </button>
+                    <button
+                      onClick={() => setTimePeriod('yearly')}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                        timePeriod === 'yearly'
+                          ? 'bg-red-600 text-white shadow-sm'
+                          : 'text-red-600 hover:text-red-700'
+                      }`}
+                    >
+                      년
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Chart Content */}
               {renderChart()}
             </Card>
           </div>
 
-          {/* Quick Insights */}
-          <div className="mb-8">
-            <Card title="주요 인사이트">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <h4 className="font-semibold text-blue-900 mb-2">최고 인구 자치구</h4>
-                  {monthlyStats.length > 0 && (
-                    <>
-                      <p className="text-lg font-bold text-blue-700">
-                        {monthlyStats.sort((a, b) => b.total - a.total)[0]?.districtName}
-                      </p>
-                      <p className="text-sm text-blue-600">
-                        {monthlyStats.sort((a, b) => b.total - a.total)[0]?.total.toLocaleString()}명
-                      </p>
-                    </>
-                  )}
-                </div>
-                
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <h4 className="font-semibold text-green-900 mb-2">평균 인구</h4>
-                  {monthlyStats.length > 0 && (
-                    <>
-                      <p className="text-lg font-bold text-green-700">
-                        {Math.round(monthlyStats.reduce((sum, stat) => sum + stat.total, 0) / monthlyStats.length).toLocaleString()}명
-                      </p>
-                      <p className="text-sm text-green-600">25개 자치구 평균</p>
-                    </>
-                  )}
-                </div>
-                
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <h4 className="font-semibold text-purple-900 mb-2">총 인구</h4>
-                  {monthlyStats.length > 0 && (
-                    <>
-                      <p className="text-lg font-bold text-purple-700">
-                        {monthlyStats.reduce((sum, stat) => sum + stat.total, 0).toLocaleString()}명
-                      </p>
-                      <p className="text-sm text-purple-600">서울시 전체</p>
-                    </>
-                  )}
-                </div>
-              </div>
-            </Card>
-          </div>
+
 
           {/* Additional Actions */}
           <div className="mb-8">
