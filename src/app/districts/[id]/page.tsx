@@ -675,10 +675,24 @@ const DistrictDetailPage = () => {
       };
       
       const dbDistrictId = districtCodeMap[districtId];
+      
+      console.log(`📝 Districts ${districtId}: Loading notes for DB district ${dbDistrictId}`);
+      
       const notes = await apiClient.getUserNotes(userId, dbDistrictId);
       
+      console.log(`📝 Districts ${districtId}: Received ${notes.length} notes from API:`, notes.map(n => ({
+        noteId: n.noteId,
+        districtId: n.districtId,
+        content: n.content.substring(0, 20) + '...'
+      })));
+      
+      // 클라이언트 측 추가 필터링: 정확한 자치구 코드만 허용
+      const filteredNotes = notes.filter(note => note.districtId === dbDistrictId);
+      
+      console.log(`📝 Districts ${districtId}: Filtered to ${filteredNotes.length} notes for district ${dbDistrictId}`);
+      
       // 최신순으로 정렬
-      const sortedNotes = notes.sort((a, b) => 
+      const sortedNotes = filteredNotes.sort((a, b) => 
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
       

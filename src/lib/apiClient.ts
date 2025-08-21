@@ -361,10 +361,22 @@ class ApiClient {
   async getUserNotes(userId: string, districtId?: number): Promise<NoteDto[]> {
     let queryParams = '';
     if (districtId) {
-      const districtCode = this.getDistrictCode(districtId);
-      if (districtCode) {
-        queryParams = `?districtId=${districtCode}`;
+      // districtId가 이미 DB 코드 형식(11xxx)인지 내부 ID(1-25)인지 확인
+      let districtCode: string;
+      if (districtId >= 11000) {
+        // 이미 DB 코드 형식
+        districtCode = districtId.toString();
+      } else {
+        // 내부 ID 형식이므로 변환 필요
+        const mappedCode = this.getDistrictCode(districtId);
+        if (!mappedCode) {
+          console.error(`Invalid districtId for getUserNotes: ${districtId}`);
+          return [];
+        }
+        districtCode = mappedCode;
       }
+      queryParams = `?districtId=${districtCode}`;
+      console.log(`📝 getUserNotes: Using districtCode ${districtCode} for districtId ${districtId}`);
     }
     return await this.client.get(`/users/${userId}/notes${queryParams}`);
   }

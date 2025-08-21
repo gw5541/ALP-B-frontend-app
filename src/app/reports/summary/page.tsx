@@ -18,7 +18,8 @@ import {
   WeeklyTrendDto,
   MonthlyTrendDto,
   MonthlyPopulation,
-  District 
+  District,
+  NoteDto
 } from '@/lib/types';
 import { buildAgeDistributionFromBuckets } from '@/lib/charts/pyramid'; // 🔧 추가
 import { apiClient } from '@/lib/apiClient';
@@ -56,12 +57,31 @@ const ReportsSummaryContent = () => {
   const [chartLoading, setChartLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 메모 관련 상태들
+  const [memo, setMemo] = useState('');
+  const [selectedDistrictId, setSelectedDistrictId] = useState<number | null>(null);
+  const [memoLoading, setMemoLoading] = useState(false);
+  const [memoSaved, setMemoSaved] = useState(false);
+  const [allNotes, setAllNotes] = useState<NoteDto[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editingContent, setEditingContent] = useState('');
+
   const filters = parseSearchParams(searchParams);
 
   useEffect(() => {
     loadDistricts();
     loadFavoriteDistricts();
   }, []); // 🔧 수정: 한 번만 로드
+
+  // 관심 지역이 로드되면 첫 번째 지역을 기본 선택하고 메모 로드
+  useEffect(() => {
+    const validFavorites = favoriteDistricts.filter((id): id is number => id !== null);
+    if (validFavorites.length > 0) {
+      setSelectedDistrictId(validFavorites[0]);
+      loadAllNotes();
+    }
+  }, [favoriteDistricts]);
 
   useEffect(() => {
     loadMonthlyStats();
@@ -580,6 +600,149 @@ const ReportsSummaryContent = () => {
     }));
   };
 
+  // 메모 관련 함수들
+  const districtCodeMap: Record<number, number> = {
+    1: 11680,   // 강남구
+    2: 11740,   // 강동구  
+    3: 11305,   // 강북구
+    4: 11500,   // 강서구
+    5: 11620,   // 관악구
+    6: 11215,   // 광진구
+    7: 11530,   // 구로구
+    8: 11545,   // 금천구
+    9: 11350,   // 노원구
+    10: 11320,  // 도봉구
+    11: 11230,  // 동대문구
+    12: 11590,  // 동작구
+    13: 11440,  // 마포구
+    14: 11410,  // 서대문구
+    15: 11650,  // 서초구
+    16: 11200,  // 성동구
+    17: 11290,  // 성북구
+    18: 11710,  // 송파구
+    19: 11470,  // 양천구
+    20: 11560,  // 영등포구
+    21: 11170,  // 용산구
+    22: 11380,  // 은평구
+    23: 11110,  // 종로구
+    24: 11140,  // 중구
+    25: 11260   // 중랑구
+  };
+
+  const saveMemo = async () => {
+    if (!selectedDistrictId || !memo.trim()) return;
+
+    try {
+      setMemoLoading(true);
+      const userId = getStoredUserId();
+      const dbDistrictId = districtCodeMap[selectedDistrictId];
+      
+      await apiClient.createNote(userId, {
+        districtId: dbDistrictId,
+        content: memo.trim()
+      });
+      
+      setMemo('');
+      setMemoSaved(true);
+      loadAllNotes();
+      
+      setTimeout(() => {
+        setMemoSaved(false);
+      }, 3000);
+    } catch (err) {
+      console.error('Failed to save memo:', err);
+    } finally {
+      setMemoLoading(false);
+    }
+  };
+
+  const loadAllNotes = async () => {
+    try {
+      setNotesLoading(true);
+      const userId = getStoredUserId();
+      
+      // 모든 관심 지역의 메모들을 로드
+      const validFavorites = favoriteDistricts.filter((id): id is number => id !== null);
+      if (validFavorites.length === 0) {
+        setAllNotes([]);
+        return;
+      }
+
+      const notePromises = validFavorites.map(async (internalId) => {
+        const dbDistrictId = districtCodeMap[internalId];
+        const notes = await apiClient.getUserNotes(userId, dbDistrictId);
+        return notes.map(note => ({
+          ...note,
+          internalDistrictId: internalId // 내부 ID도 함께 저장
+        }));
+      });
+
+      const allNotesArrays = await Promise.all(notePromises);
+      const allNotesFlat = allNotesArrays.flat();
+      
+      // 최신순으로 정렬
+      const sortedNotes = allNotesFlat.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      
+      setAllNotes(sortedNotes);
+    } catch (err) {
+      console.error('Failed to load all notes:', err);
+    } finally {
+      setNotesLoading(false);
+    }
+  };
+
+  const startEditingNote = (note: NoteDto) => {
+    setEditingNoteId(note.noteId);
+    setEditingContent(note.content);
+  };
+
+  const cancelEditingNote = () => {
+    setEditingNoteId(null);
+    setEditingContent('');
+  };
+
+  const saveEditingNote = async () => {
+    if (!editingNoteId || !editingContent.trim()) return;
+
+    try {
+      setNotesLoading(true);
+      const userId = getStoredUserId();
+      
+      await apiClient.updateNote(userId, editingNoteId, {
+        content: editingContent.trim()
+      });
+
+      setAllNotes(prev => prev.map(note => 
+        note.noteId === editingNoteId 
+          ? { ...note, content: editingContent.trim() } 
+          : note
+      ));
+      
+      setEditingNoteId(null);
+      setEditingContent('');
+    } catch (err) {
+      console.error('Failed to update note:', err);
+    } finally {
+      setNotesLoading(false);
+    }
+  };
+
+  const deleteNoteFromList = async (noteId: number) => {
+    try {
+      setNotesLoading(true);
+      const userId = getStoredUserId();
+      
+      await apiClient.deleteNote(userId, noteId);
+      setAllNotes(prev => prev.filter(note => note.noteId !== noteId));
+    } catch (err) {
+      console.error('Failed to delete note:', err);
+    } finally {
+      setNotesLoading(false);
+    }
+  };
+
   const renderChart = () => {
     if (chartLoading) {
       return <SkeletonChart />;
@@ -888,25 +1051,153 @@ const ReportsSummaryContent = () => {
           </Card>
           </div>
 
-          {/* Additional Actions */}
+          {/* Memo Section */}
           <div className="mb-8">
-            <Card title="추가 기능">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <a
-                  href="/dashboard"
-                  className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <h4 className="font-semibold text-gray-900 mb-2">대시보드</h4>
-                  <p className="text-sm text-gray-600">인터랙티브 지도와 실시간 현황</p>
-                </a>
-                
-                <div className="p-4 border border-gray-200 rounded-lg bg-gray-50">
-                  <h4 className="font-semibold text-gray-900 mb-2">데이터 내보내기</h4>
-                  <p className="text-sm text-gray-600">Excel/PDF 형태로 보고서 다운로드</p>
-                  <span className="text-xs text-gray-400">(준비 중)</span>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* 메모 작성 카드 */}
+              <Card title="분석 메모 작성">
+                <div className="space-y-4">
+                  {/* 자치구 선택 드롭다운 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      자치구 선택
+                    </label>
+                    <select
+                      value={selectedDistrictId || ''}
+                      onChange={(e) => setSelectedDistrictId(Number(e.target.value) || null)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">자치구를 선택하세요</option>
+                      {favoriteDistricts
+                        .filter((id): id is number => id !== null)
+                        .map((districtId) => {
+                          const district = DISTRICTS.find(d => d.id === districtId);
+                          return (
+                            <option key={districtId} value={districtId}>
+                              {district?.name || `자치구 ${districtId}`}
+                            </option>
+                          );
+                        })}
+                    </select>
+                  </div>
+
+                  {/* 메모 입력 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      메모 내용
+                    </label>
+                    <textarea
+                      value={memo}
+                      onChange={(e) => setMemo(e.target.value)}
+                      placeholder="분석 내용이나 중요한 인사이트를 기록하세요..."
+                      className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  {/* 저장 버튼 */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      {memoSaved && (
+                        <span className="text-sm text-green-600 flex items-center">
+                          <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          저장됨
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={saveMemo}
+                      disabled={memoLoading || !selectedDistrictId || !memo.trim()}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {memoLoading ? '저장 중...' : '저장'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </Card>
+              </Card>
+
+              {/* 메모 목록 카드 */}
+              <Card title="메모 목록">
+                <div className="space-y-4 max-h-96 overflow-y-auto">
+                  {notesLoading ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                      <p className="mt-2 text-sm text-gray-500">메모를 불러오는 중...</p>
+                    </div>
+                  ) : allNotes.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <p>저장된 메모가 없습니다.</p>
+                      <p className="text-sm mt-1">새로운 메모를 작성해보세요.</p>
+                    </div>
+                  ) : (
+                    allNotes.map((note) => {
+                      const district = DISTRICTS.find(d => d.id === (note as any).internalDistrictId);
+                      const districtName = district?.name || `자치구 ${(note as any).internalDistrictId}`;
+                      
+                      return (
+                        <div key={note.noteId} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
+                          {/* 자치구명과 날짜 */}
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              {districtName}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              {new Date(note.createdAt).toLocaleDateString('ko-KR')}
+                            </span>
+                          </div>
+
+                          {/* 메모 내용 */}
+                          {editingNoteId === note.noteId ? (
+                            <div className="space-y-2">
+                              <textarea
+                                value={editingContent}
+                                onChange={(e) => setEditingContent(e.target.value)}
+                                className="w-full h-20 px-3 py-2 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                              <div className="flex justify-end space-x-2">
+                                <button
+                                  onClick={cancelEditingNote}
+                                  className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
+                                >
+                                  취소
+                                </button>
+                                <button
+                                  onClick={saveEditingNote}
+                                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                                >
+                                  저장
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <p className="text-sm text-gray-900 mb-2 whitespace-pre-wrap">
+                                {note.content}
+                              </p>
+                              <div className="flex justify-end space-x-2">
+                                <button
+                                  onClick={() => startEditingNote(note)}
+                                  className="text-xs text-blue-600 hover:text-blue-800"
+                                >
+                                  수정
+                                </button>
+                                <button
+                                  onClick={() => deleteNoteFromList(note.noteId)}
+                                  className="text-xs text-red-600 hover:text-red-800"
+                                >
+                                  삭제
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </Card>
+            </div>
           </div>
         </main>
     </>
