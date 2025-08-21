@@ -25,19 +25,21 @@ import {
   NoteUpdateRequest,
   FilterParams,
   MonthlyPopulation,  // 🔧 추가
-  MonthlyPopulationBackend  // 🔧 추가
+  MonthlyPopulationBackend,  // 🔧 추가
+  AgeDistribution // 🔧 추가
 } from '@/lib/types';
 import { apiClient } from '@/lib/apiClient';
 import { 
   getToday, 
+  getTenDaysAgo,  // 🔧 추가
   getLastMonth, 
   getErrorMessage, 
   formatPopulation, 
   parseSearchParams, 
-  buildSearchParams, // 추가
+  buildSearchParams, 
   getStoredUserId,
-  getGenderLabel, // 추가
-  getAgeBucketLabel // 추가
+  getGenderLabel, 
+  getAgeBucketLabel 
 } from '@/lib/utils';
 
 const DistrictDetailPage = () => {
@@ -85,6 +87,13 @@ const DistrictDetailPage = () => {
       loadHighlights(activeTab);
     }
   }, [district, activeTab]);
+
+  // 🔧 추가: 탭 데이터 로딩 useEffect 추가 ⭐⭐⭐
+  useEffect(() => {
+    if (district) {
+      loadTabData();
+    }
+  }, [district, activeTab, filters.date, filters.from, filters.to, filters.gender, filters.ageBucket]);
 
   // 🔧 추가: highlights 로드 함수
   const loadHighlights = async (tab: TabType) => {
@@ -138,30 +147,168 @@ const DistrictDetailPage = () => {
     }
   };
 
+  // 🔧 추가: 연령대별 데이터를 stats API로 가져와서 피라미드 차트용으로 변환
+  const loadAgeDistributionFromStats = async (apiParams: any) => {
+    try {
+      console.log('📊 Loading age distribution via stats API...');
+      
+      // 현재 탭에 따른 period 설정
+      let period: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+      switch (activeTab) {
+        case 'daily':
+          period = 'DAILY';
+          break;
+        case 'weekly':
+          period = 'WEEKLY';
+          break;
+        case 'monthly':
+          period = 'MONTHLY';
+          break;
+        case 'age':
+          period = 'DAILY'; // 연령대 탭의 기본값
+          break;
+        default:
+          period = 'DAILY';
+      }
+
+      // stats API로 연령대별 데이터 가져오기
+      const statsResponse = await apiClient.getPopulationStats({
+        districtId,
+        period,
+        from: apiParams.from,
+        to: apiParams.to
+      });
+
+      console.log('📊 Stats response for age distribution:', statsResponse);
+
+      if (!statsResponse || statsResponse.length === 0) {
+        console.log('❌ No stats data for age distribution');
+        return null;
+      }
+
+      // 첫 번째 결과의 연령대별 데이터 사용 (또는 평균 계산)
+      const ageStats = statsResponse[0]; // 또는 여러 날짜의 평균을 계산할 수 있음
+      
+      // maleBucketsAvg와 femaleBucketsAvg를 AgeDistribution 배열로 변환
+      const ageDistributionArray = convertBucketsToAgeDistribution(
+        ageStats.maleBucketsAvg,
+        ageStats.femaleBucketsAvg
+      );
+
+      // AgeDistributionDto 형태로 구성
+      const ageDistributionDto: AgeDistributionDto = {
+        districtId: ageStats.districtId,
+        districtName: ageStats.districtName,
+        from: apiParams.from,
+        to: apiParams.to,
+        ageDistribution: ageDistributionArray
+      };
+
+      console.log('✅ Converted age distribution from stats:', ageDistributionDto);
+      return ageDistributionDto;
+
+    } catch (error) {
+      console.error('❌ Failed to load age distribution from stats:', error);
+      return null;
+    }
+  };
+
+  // 🔧 추가: maleBucketsAvg/femaleBucketsAvg를 AgeDistribution 배열로 변환
+  const convertBucketsToAgeDistribution = (
+    maleBuckets: Record<string, number>,
+    femaleBuckets: Record<string, number>
+  ): AgeDistribution[] => {
+    if (!maleBuckets || !femaleBuckets) {
+      return [];
+    }
+
+    // 모든 연령대 키 수집 (male과 female 모두)
+    const allAgeGroups = new Set([
+      ...Object.keys(maleBuckets),
+      ...Object.keys(femaleBuckets)
+    ]);
+
+    // 연령대별 데이터 변환
+    return Array.from(allAgeGroups)
+      .map(ageGroup => {
+        // F20T24 -> "20-24" 형태로 변환
+        const formattedAge = formatAgeGroup(ageGroup);
+        
+        return {
+          ageGroup: formattedAge,
+          male: maleBuckets[ageGroup] || 0,
+          female: femaleBuckets[ageGroup] || 0
+        };
+      })
+      .filter(item => item.male > 0 || item.female > 0) // 데이터가 있는 연령대만
+      .sort((a, b) => {
+        // 연령대 순으로 정렬 (0-9, 10-14, 15-19, ...)
+        const ageA = parseInt(a.ageGroup.split('-')[0]);
+        const ageB = parseInt(b.ageGroup.split('-')[0]);
+        return ageA - ageB;
+      });
+  };
+
+  // 🔧 추가: 연령대 형식 변환 함수
+  const formatAgeGroup = (bucketKey: string): string => {
+    // F20T24 -> "20-24"
+    // F70T74 -> "70-74"
+    // F0T9 -> "0-9"
+    
+    const match = bucketKey.match(/F(\d+)T(\d+)/);
+    if (match) {
+      const startAge = match[1];
+      const endAge = match[2];
+      return `${startAge}-${endAge}`;
+    }
+    
+    // 매칭되지 않으면 원본 반환
+    return bucketKey.replace('F', '').replace('T', '-');
+  };
+
   const loadTabData = async () => {
     try {
       setLoading(true);
       setApiErrors(prev => ({ ...prev, tabData: undefined }));
 
+      // 🔧 수정: 날짜 기준을 10일 전으로 통일 (대시보드와 동일하게)
+      const baseDate = getTenDaysAgo(); // 데이터가 있는 날짜로 설정
+      const lastMonthFromBase = (() => {
+        const date = new Date(baseDate);
+        date.setMonth(date.getMonth() - 1);
+        return date.toISOString().split('T')[0];
+      })();
+
       const apiParams = {
         districtId,
         gender: filters.gender,
         ageBucket: filters.ageBucket,
-        date: filters.date || getToday(),
-        from: filters.from || getLastMonth(),
-        to: filters.to || getToday()
+        date: filters.date || baseDate,           // 🔧 수정: getToday() → baseDate
+        from: filters.from || lastMonthFromBase,  // 🔧 수정: 10일 전 기준 한달 전
+        to: filters.to || baseDate                // 🔧 수정: getToday() → baseDate
       };
 
+      console.log('📅 API Params with corrected dates:', {
+        activeTab,
+        baseDate,
+        apiParams
+      });
+
       if (activeTab === 'daily') {
+        console.log('📊 Loading daily (hourly) data for date:', apiParams.date);
         const hourlyResponse = await apiClient.getHourlyTrends(apiParams);
         setHourlyData(hourlyResponse);
+        console.log('✅ Hourly data loaded:', hourlyResponse);
       } else if (activeTab === 'weekly') {
+        console.log('📊 Loading weekly data from:', apiParams.from, 'to:', apiParams.to);
         const weeklyResponse = await apiClient.getPopulationStats({
           period: 'WEEKLY',
           ...apiParams
         });
         setWeeklyData(weeklyResponse);
+        console.log('✅ Weekly data loaded:', weeklyResponse);
       } else if (activeTab === 'monthly') {
+        console.log('📊 Loading monthly data (12 months)');
         const monthlyResponse = await apiClient.getMonthlyTrends({
           districtId: apiParams.districtId,
           months: 12,
@@ -169,20 +316,19 @@ const DistrictDetailPage = () => {
           ageBucket: apiParams.ageBucket
         });
         setMonthlyData(monthlyResponse);
+        console.log('✅ Monthly data loaded:', monthlyResponse);
       }
 
-      // Load age distribution (always load for pyramid)
-      const ageResponse = await apiClient.getAgeDistribution({
-        districtId,
-        from: apiParams.from,
-        to: apiParams.to
-      });
-      setAgeDistribution(ageResponse);
+      // 🔧 수정: stats API를 사용해서 연령 분포 데이터 로드
+      console.log('📊 Loading age distribution via stats API from:', apiParams.from, 'to:', apiParams.to);
+      const ageDistributionData = await loadAgeDistributionFromStats(apiParams);
+      setAgeDistribution(ageDistributionData);
+      console.log('✅ Age distribution loaded via stats:', ageDistributionData);
 
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       setApiErrors(prev => ({ ...prev, tabData: errorMessage }));
-      console.error('Failed to load tab data:', err);
+      console.error('❌ Failed to load tab data:', err);
     } finally {
       setLoading(false);
     }
@@ -345,6 +491,26 @@ const DistrictDetailPage = () => {
     }));
   };
 
+  // 🔧 추가: 주간 데이터를 차트용 데이터로 변환하는 함수
+  const convertToWeeklyChartData = (weeklyStats: PopulationAggDto[]) => {
+    return weeklyStats.map((stat, index) => ({
+      hour: index,  // HourlyLine 컴포넌트가 기대하는 필드명
+      value: stat.totalAvg,
+      hourLabel: `${index + 1}주차`,  // 또는 날짜 기반으로 변경 가능
+      date: stat.periodStartDate
+    }));
+  };
+
+  // 🔧 수정: 연령 분포 데이터 검증 함수 (올바른 필드명 사용)
+  const validateAgeDistribution = (ageData: AgeDistributionDto | null) => {
+    if (!ageData) return false;
+    
+    // ageDistribution 배열이 있고 최소 하나의 데이터가 있는지 확인
+    return ageData.ageDistribution && 
+           Array.isArray(ageData.ageDistribution) && 
+           ageData.ageDistribution.length > 0;
+  };
+
   const renderTabContent = () => {
     if (loading) {
       return <LoadingSpinner size="lg" message="데이터를 불러오는 중..." />;
@@ -355,14 +521,26 @@ const DistrictDetailPage = () => {
         <ErrorMessage 
           error={apiErrors.tabData}
           onRetry={() => loadTabData()}
-          className="h-64 flex items-center justify-center"
         />
       );
     }
 
     switch (activeTab) {
       case 'daily':
-        return hourlyData ? (
+        // 🔧 수정: 일간 데이터 검증 개선
+        const hasHourlyData = hourlyData && 
+          hourlyData.currentData && 
+          Array.isArray(hourlyData.currentData) && 
+          hourlyData.currentData.length > 0;
+
+        console.log('📊 Daily data validation:', {
+          hourlyData,
+          hasCurrentData: !!hourlyData?.currentData,
+          dataLength: hourlyData?.currentData?.length,
+          hasHourlyData
+        });
+
+        return hasHourlyData ? (
           <HourlyLine 
             series={hourlyData.currentData}
             title="시간대별 인구 현황"
@@ -370,39 +548,106 @@ const DistrictDetailPage = () => {
           />
         ) : (
           <div className="h-64 flex items-center justify-center text-gray-500">
-            데이터가 없습니다
+            <div className="text-center">
+              <p>해당 날짜의 시간별 데이터가 없습니다</p>
+              <p className="text-sm mt-1">다른 날짜를 선택해보세요</p>
+            </div>
           </div>
         );
 
       case 'weekly':
-        const weeklyChartData = weeklyData.map((stat, index) => ({
-          hour: index,
-          value: stat.totalAvg
-        }));
+        // 🔧 수정: 주간 데이터 변환 로직 개선
+        console.log('📊 Weekly data validation:', {
+          weeklyData,
+          dataLength: weeklyData?.length
+        });
+
+        const hasWeeklyData = weeklyData && Array.isArray(weeklyData) && weeklyData.length > 0;
         
-        return weeklyChartData.length > 0 ? (
-          <HourlyLine 
-            series={weeklyChartData}
-            title="요일별 인구 현황"
-            height={350}
-          />
-        ) : (
-          <div className="h-64 flex items-center justify-center text-gray-500">
-            데이터가 없습니다
-          </div>
-        );
+        if (hasWeeklyData) {
+          const weeklyChartData = convertToWeeklyChartData(weeklyData);
+          console.log('✅ Converted weekly chart data:', weeklyChartData);
+          
+          return (
+            <HourlyLine 
+              series={weeklyChartData}
+              title="주간 인구 현황"
+              height={350}
+            />
+          );
+        } else {
+          return (
+            <div className="h-64 flex items-center justify-center text-gray-500">
+              <div className="text-center">
+                <p>해당 기간의 주간 데이터가 없습니다</p>
+                <p className="text-sm mt-1">다른 기간을 선택해보세요</p>
+              </div>
+            </div>
+          );
+        }
 
       case 'monthly':
-        // 에러 1, 2 수정: null 체크 강화
-        return monthlyData && monthlyData.monthlyData && monthlyData.monthlyData.length > 0 ? (
-          <MonthlyLine 
-            data={convertToMonthlyPopulation(monthlyData.monthlyData)}
-            title="월별 인구 현황"
+        // 🔧 수정: 월간 데이터 검증 개선
+        const hasMonthlyData = monthlyData && 
+          monthlyData.monthlyData && 
+          Array.isArray(monthlyData.monthlyData) && 
+          monthlyData.monthlyData.length > 0;
+
+        console.log('📊 Monthly data validation:', {
+          monthlyData,
+          hasMonthlyDataField: !!monthlyData?.monthlyData,
+          dataLength: monthlyData?.monthlyData?.length,
+          hasMonthlyData
+        });
+
+        if (hasMonthlyData) {
+          const convertedData = convertToMonthlyPopulation(monthlyData.monthlyData);
+          console.log('✅ Converted monthly data:', convertedData);
+          
+          return (
+            <MonthlyLine 
+              data={convertedData}
+              title="월별 인구 현황"
+              height={350}
+            />
+          );
+        } else {
+          return (
+            <div className="h-64 flex items-center justify-center text-gray-500">
+              <div className="text-center">
+                <p>월별 데이터가 없습니다</p>
+                <p className="text-sm mt-1">데이터 수집 기간을 확인해보세요</p>
+              </div>
+            </div>
+          );
+        }
+
+      case 'age':
+        // 🔧 수정: 연령 분포 데이터 검증 및 전달 방식 개선
+        const hasAgeData = validateAgeDistribution(ageDistribution);
+        
+        console.log('📊 Age data validation:', {
+          ageDistribution,
+          hasAgeDistribution: !!ageDistribution?.ageDistribution,
+          ageDataLength: ageDistribution?.ageDistribution?.length,
+          hasAgeData
+        });
+
+        // 🔧 수정: null-safe하게 데이터 추출
+        const ageData = ageDistribution?.ageDistribution;
+
+        return hasAgeData && ageData ? (
+          <Pyramid 
+            data={ageData}  // 🔧 수정: 안전하게 추출된 데이터 사용
+            title="연령대별 인구 분포"
             height={350}
           />
         ) : (
           <div className="h-64 flex items-center justify-center text-gray-500">
-            데이터가 없습니다
+            <div className="text-center">
+              <p>해당 기간의 연령 분포 데이터가 없습니다</p>
+              <p className="text-sm mt-1">다른 기간을 선택해보세요</p>
+            </div>
           </div>
         );
 
@@ -548,16 +793,47 @@ const DistrictDetailPage = () => {
             {/* 상단 우측: 연령대별 인구 분포 */}
             <div>
               <Card title="연령대별 인구 분포">
-                {/* 에러 7, 8 수정: null 체크 강화 */}
-                {ageDistribution && ageDistribution.ageDistribution && ageDistribution.ageDistribution.length > 0 ? (
-                  <Pyramid data={ageDistribution.ageDistribution} height={350} />
-                ) : loading ? (
-                  <LoadingSpinner size="lg" message="연령대별 데이터 로딩 중..." />
-                ) : (
-                  <div className="h-64 flex items-center justify-center text-gray-500">
-                    {loading ? '데이터를 불러오는 중...' : '데이터가 없습니다'}
-                  </div>
-                )}
+                {/* 🔧 수정: 조건 검사를 변수로 분리 */}
+                {(() => {
+                  const hasValidAgeData = ageDistribution && 
+                    ageDistribution.ageDistribution && 
+                    Array.isArray(ageDistribution.ageDistribution) && 
+                    ageDistribution.ageDistribution.length > 0;
+
+                  // 디버깅 로그
+                  console.log('🏗️ Pyramid card rendering debug:', {
+                    ageDistribution,
+                    hasAgeDistribution: !!ageDistribution,
+                    hasAgeArray: !!ageDistribution?.ageDistribution,
+                    ageArrayLength: ageDistribution?.ageDistribution?.length || 0,
+                    ageArrayType: typeof ageDistribution?.ageDistribution,
+                    isAgeArrayArray: Array.isArray(ageDistribution?.ageDistribution),
+                    loading,
+                    hasValidAgeData
+                  });
+
+                  if (hasValidAgeData) {
+                    console.log('🎯 About to render Pyramid with data:', ageDistribution.ageDistribution);
+                    return <Pyramid data={ageDistribution.ageDistribution} height={350} />;
+                  } else if (loading) {
+                    console.log('🔄 Showing loading spinner for age data');
+                    return <LoadingSpinner size="lg" message="연령대별 데이터 로딩 중..." />;
+                  } else {
+                    console.log('❌ Showing no data message for age data');
+                    return (
+                      <div className="h-64 flex items-center justify-center text-gray-500">
+                        <div className="text-center">
+                          <p>연령대별 데이터가 없습니다</p>
+                          <p className="text-xs mt-1">
+                            Debug: hasAge={String(!!ageDistribution)}, 
+                            hasArray={String(!!ageDistribution?.ageDistribution)}, 
+                            length={ageDistribution?.ageDistribution?.length || 0}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+                })()}
               </Card>
             </div>
 
