@@ -7,6 +7,7 @@ import Card from '@/components/common/Card';
 import FilterBar from '@/components/common/FilterBar';
 import StatTable from '@/components/tables/StatTable';
 import HourlyLine from '@/components/charts/HourlyLine';
+import MonthlyLine from '@/components/charts/MonthlyLine';
 import Pyramid from '@/components/charts/Pyramid';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { SkeletonChart, SkeletonTable } from '@/components/common/Skeleton';
@@ -14,6 +15,9 @@ import {
   PopulationAggDto,
   AgeDistributionDto,
   HourlyTrendDto,
+  WeeklyTrendDto,
+  MonthlyTrendDto,
+  MonthlyPopulation,
   District 
 } from '@/lib/types';
 import { buildAgeDistributionFromBuckets } from '@/lib/charts/pyramid'; // 🔧 추가
@@ -42,6 +46,10 @@ const ReportsSummaryContent = () => {
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('daily');
   const [hourlyData, setHourlyData] = useState<HourlyTrendDto[]>([]);
   const [favoriteHourlyData, setFavoriteHourlyData] = useState<HourlyTrendDto[]>([]);
+  const [weeklyData, setWeeklyData] = useState<PopulationAggDto[]>([]);
+  const [favoriteWeeklyData, setFavoriteWeeklyData] = useState<PopulationAggDto[][]>([]);
+  const [monthlyData, setMonthlyData] = useState<MonthlyPopulation[]>([]);
+  const [favoriteMonthlyData, setFavoriteMonthlyData] = useState<MonthlyPopulation[][]>([]);
   const [ageDistribution, setAgeDistribution] = useState<AgeDistributionDto | null>(null);
   const [favoriteAgeDistributions, setFavoriteAgeDistributions] = useState<AgeDistributionDto[]>([]);
   const [loading, setLoading] = useState(false);
@@ -76,7 +84,8 @@ const ReportsSummaryContent = () => {
     filters.from,
     filters.to,
     filters.gender,
-    filters.ageBucket
+    filters.ageBucket,
+    favoriteDistricts
   ]);
 
   const loadDistricts = async () => {
@@ -200,52 +209,105 @@ const ReportsSummaryContent = () => {
 
       if (chartMode === 'hourly') {
         const districtId = filters.districtId;
-        const params = {
-          districtId,
-          date: filters.date || getTwentyDaysAgo(), // 🔧 수정: 20일 전 기준
-          gender: filters.gender,
-          ageBucket: filters.ageBucket
-        };
+        const baseDate = getTwentyDaysAgo();
 
-        if (districtId) {
-          const hourlyResponse = await apiClient.getHourlyTrends({
+        // 각 state 초기화
+        setHourlyData([]);
+        setFavoriteHourlyData([]);
+        setWeeklyData([]);
+        setFavoriteWeeklyData([]);
+        setMonthlyData([]);
+        setFavoriteMonthlyData([]);
+
+        if (timePeriod === 'daily') {
+          // 일간: 시간대별 차트
+          const params = {
             districtId,
-            date: params.date,
-            gender: params.gender,
-            ageBucket: params.ageBucket
-          });
-          setHourlyData([hourlyResponse]);
-          setFavoriteHourlyData([]); // 특정 지역 선택 시 관심 지역 데이터 초기화
-        } else {
-          // 관심 지역별로 개별 차트 데이터 로드
-          const selectedDistricts = favoriteDistricts.filter((id): id is number => id !== null);
-          
-          if (selectedDistricts.length > 0) {
-            const favoriteHourlyPromises = selectedDistricts.map(internalDistrictId =>
-              apiClient.getHourlyTrends({
-                districtId: internalDistrictId,
-                date: params.date,
-                gender: params.gender,
-                ageBucket: params.ageBucket
-              })
-            );
-            
-            const favoriteHourlyResponses = await Promise.all(favoriteHourlyPromises);
-            setFavoriteHourlyData(favoriteHourlyResponses);
-            setHourlyData([]); // 관심 지역 모드에서는 기존 hourlyData 초기화
+            date: filters.date || baseDate,
+            gender: filters.gender,
+            ageBucket: filters.ageBucket
+          };
+
+          if (districtId) {
+            const hourlyResponse = await apiClient.getHourlyTrends({
+              districtId,
+              date: params.date,
+              gender: params.gender,
+              ageBucket: params.ageBucket
+            });
+            setHourlyData([hourlyResponse]);
           } else {
-            // 관심 지역이 없으면 상위 5개 지역 표시 (기존 로직)
-            const topDistricts = monthlyStats
-              .sort((a, b) => b.totalAvg - a.totalAvg)
-              .slice(0, 5);
-            
-            const hourlyPromises = topDistricts.map(district =>
-              apiClient.getHourlyTrends({ ...params, districtId: district.districtId })
-            );
-            
-            const hourlyResponses = await Promise.all(hourlyPromises);
-            setHourlyData(hourlyResponses);
-            setFavoriteHourlyData([]);
+            // 관심 지역별 시간대별 데이터
+            const selectedDistricts = favoriteDistricts.filter((id): id is number => id !== null);
+            if (selectedDistricts.length > 0) {
+              const favoriteHourlyPromises = selectedDistricts.map(internalDistrictId =>
+                apiClient.getHourlyTrends({
+                  districtId: internalDistrictId,
+                  date: params.date,
+                  gender: params.gender,
+                  ageBucket: params.ageBucket
+                })
+              );
+              const favoriteHourlyResponses = await Promise.all(favoriteHourlyPromises);
+              setFavoriteHourlyData(favoriteHourlyResponses);
+            }
+          }
+        } else if (timePeriod === 'monthly') {
+          // 주간: 요일별 차트
+          const weekRange = getWeekRange(baseDate);
+          const params = {
+            districtId,
+            period: 'DAILY' as const,
+            from: weekRange.start,
+            to: weekRange.end,
+            gender: filters.gender,
+            ageBucket: filters.ageBucket
+          };
+
+          if (districtId) {
+            const weeklyResponse = await apiClient.getPopulationStats(params);
+            setWeeklyData(weeklyResponse);
+          } else {
+            // 관심 지역별 요일별 데이터
+            const selectedDistricts = favoriteDistricts.filter((id): id is number => id !== null);
+            if (selectedDistricts.length > 0) {
+              const favoriteWeeklyPromises = selectedDistricts.map(internalDistrictId =>
+                apiClient.getPopulationStats({
+                  ...params,
+                  districtId: internalDistrictId
+                })
+              );
+              const favoriteWeeklyResponses = await Promise.all(favoriteWeeklyPromises);
+              setFavoriteWeeklyData(favoriteWeeklyResponses);
+            }
+          }
+        } else if (timePeriod === 'yearly') {
+          // 연간: 주차별 차트
+          if (districtId) {
+            const monthlyResponse = await apiClient.getWeeklyTrends({
+              districtId,
+              weeks: 5,
+              gender: filters.gender,
+              ageBucket: filters.ageBucket
+            });
+            const convertedData = convertWeeklyToMonthlyPopulation(monthlyResponse);
+            setMonthlyData(convertedData);
+          } else {
+            // 관심 지역별 주차별 데이터
+            const selectedDistricts = favoriteDistricts.filter((id): id is number => id !== null);
+            if (selectedDistricts.length > 0) {
+              const favoriteMonthlyPromises = selectedDistricts.map(async (internalDistrictId) => {
+                const monthlyResponse = await apiClient.getWeeklyTrends({
+                  districtId: internalDistrictId,
+                  weeks: 5,
+                  gender: filters.gender,
+                  ageBucket: filters.ageBucket
+                });
+                return convertWeeklyToMonthlyPopulation(monthlyResponse);
+              });
+              const favoriteMonthlyResponses = await Promise.all(favoriteMonthlyPromises);
+              setFavoriteMonthlyData(favoriteMonthlyResponses);
+            }
           }
         }
       } else if (chartMode === 'pyramid') {
@@ -438,15 +500,93 @@ const ReportsSummaryContent = () => {
     return "자치구별 월간 생활인구 통계";
   }, [monthlyStats, getUniqueDistrictStats]);
 
+  // Districts 페이지에서 가져온 헬퍼 함수들
+  const getWeekRange = (date: string) => {
+    const targetDate = new Date(date);
+    const dayOfWeek = targetDate.getDay();
+    
+    const mondayOfWeek = new Date(targetDate);
+    const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    mondayOfWeek.setDate(targetDate.getDate() + daysToMonday);
+    
+    const sundayOfWeek = new Date(mondayOfWeek);
+    sundayOfWeek.setDate(mondayOfWeek.getDate() + 6);
+    
+    return {
+      start: mondayOfWeek.toISOString().split('T')[0],
+      end: sundayOfWeek.toISOString().split('T')[0]
+    };
+  };
+
+  const convertToWeeklyChartData = (dailyStats: PopulationAggDto[]) => {
+    if (!dailyStats || dailyStats.length === 0) return [];
+    
+    const dayOfWeekMap: Record<number, { total: number; count: number; name: string }> = {
+      0: { total: 0, count: 0, name: '일요일' },
+      1: { total: 0, count: 0, name: '월요일' },
+      2: { total: 0, count: 0, name: '화요일' },
+      3: { total: 0, count: 0, name: '수요일' },
+      4: { total: 0, count: 0, name: '목요일' },
+      5: { total: 0, count: 0, name: '금요일' },
+      6: { total: 0, count: 0, name: '토요일' }
+    };
+    
+    dailyStats.forEach(stat => {
+      const date = new Date(stat.periodStartDate);
+      const dayOfWeek = date.getDay();
+      
+      if (dayOfWeekMap[dayOfWeek]) {
+        dayOfWeekMap[dayOfWeek].total += stat.totalAvg;
+        dayOfWeekMap[dayOfWeek].count += 1;
+      }
+    });
+    
+    const orderedDays = [1, 2, 3, 4, 5, 6, 0];
+    
+    return orderedDays.map((dayIndex, chartIndex) => {
+      const dayData = dayOfWeekMap[dayIndex];
+      const avgValue = dayData.count > 0 ? Math.round(dayData.total / dayData.count) : 0;
+      
+      return {
+        hour: chartIndex,
+        value: avgValue,
+        hourLabel: dayData.name,
+        date: dayData.name,
+        dayOfWeek: dayIndex,
+        dataCount: dayData.count
+      };
+    });
+  };
+
+  const convertWeeklyToMonthlyPopulation = (weeklyResponse: WeeklyTrendDto): MonthlyPopulation[] => {
+    if (!weeklyResponse?.weeklyData || weeklyResponse.weeklyData.length === 0) {
+      return [];
+    }
+    
+    const sortedWeeklyData = weeklyResponse.weeklyData
+      .map(item => {
+        const weekMatch = item.weekPeriod.match(/W(\d+)/);
+        const weekNumber = weekMatch ? parseInt(weekMatch[1]) : 0;
+        return { ...item, weekNumber };
+      })
+      .sort((a, b) => a.weekNumber - b.weekNumber);
+    
+    return sortedWeeklyData.map((item, index) => ({
+      month: `${index + 1}주차`,
+      value: item.totalAvg,
+      districtId: weeklyResponse.districtId
+    }));
+  };
+
   const renderChart = () => {
     if (chartLoading) {
       return <SkeletonChart />;
     }
 
     if (chartMode === 'hourly') {
-      // 특정 지역이 선택된 경우 (기존 로직)
-      if (hourlyData.length > 0) {
-        if (hourlyData.length === 1) {
+      if (timePeriod === 'daily') {
+        // 일간: 시간대별 차트
+        if (hourlyData.length > 0) {
           return (
             <HourlyLine 
               series={hourlyData[0].currentData}
@@ -456,38 +596,103 @@ const ReportsSummaryContent = () => {
           );
         }
 
-        return (
-          <HourlyLine 
-            series={hourlyData[0].currentData}
-            title="주요 자치구 시간대별 인구"
-            height={350}
-          />
-        );
-      }
-
-      // 관심 지역별 개별 차트들
-      if (favoriteHourlyData.length > 0) {
-        return (
-          <div className="space-y-6">
-            <h4 className="text-lg font-medium text-gray-900 mb-4">관심 지역별 시간대별 인구 현황</h4>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {favoriteHourlyData.map((data, index) => (
-                <div key={data.districtId || index} className="bg-white border border-gray-200 rounded-lg p-4">
-                  <HourlyLine 
-                    series={data.currentData}
-                    title={`${data.districtName || `자치구 ${data.districtId}`}`}
-                    height={280}
-                  />
-                </div>
-              ))}
+        if (favoriteHourlyData.length > 0) {
+          return (
+            <div className="space-y-6">
+              <h4 className="text-lg font-medium text-gray-900 mb-4">관심 지역별 시간대별 인구 현황</h4>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {favoriteHourlyData.map((data, index) => (
+                  <div key={data.districtId || index} className="bg-white border border-gray-200 rounded-lg p-4">
+                    <HourlyLine 
+                      series={data.currentData}
+                      title={`${data.districtName || `자치구 ${data.districtId}`}`}
+                      height={280}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        );
+          );
+        }
+      } else if (timePeriod === 'monthly') {
+        // 주간: 요일별 차트
+        if (weeklyData.length > 0) {
+          const weeklyChartData = convertToWeeklyChartData(weeklyData);
+          return (
+            <HourlyLine 
+              series={weeklyChartData}
+              title="주간 인구 현황 (요일별 평균)"
+              height={350}
+              chartType="weekly"
+            />
+          );
+        }
+
+        if (favoriteWeeklyData.length > 0) {
+          return (
+            <div className="space-y-6">
+              <h4 className="text-lg font-medium text-gray-900 mb-4">관심 지역별 요일별 인구 현황</h4>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {favoriteWeeklyData.map((data, index) => {
+                  const weeklyChartData = convertToWeeklyChartData(data);
+                  const districtName = data[0]?.districtName || `자치구 ${data[0]?.districtId}`;
+                  return (
+                    <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
+                      <HourlyLine 
+                        series={weeklyChartData}
+                        title={districtName}
+                        height={280}
+                        chartType="weekly"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
+      } else if (timePeriod === 'yearly') {
+        // 연간: 주차별 차트
+        if (monthlyData.length > 0) {
+          return (
+            <MonthlyLine 
+              data={monthlyData}
+              title="주차별 인구 현황"
+              height={350}
+              color="#ef4444"
+            />
+          );
+        }
+
+        if (favoriteMonthlyData.length > 0) {
+          return (
+            <div className="space-y-6">
+              <h4 className="text-lg font-medium text-gray-900 mb-4">관심 지역별 주차별 인구 현황</h4>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {favoriteMonthlyData.map((data, index) => {
+                  const districtName = data[0]?.districtId ? `자치구 ${data[0].districtId}` : `지역 ${index + 1}`;
+                  return (
+                    <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
+                      <MonthlyLine 
+                        data={data}
+                        title={districtName}
+                        height={280}
+                        color="#ef4444"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
       }
 
       return (
         <div className="h-64 flex items-center justify-center text-gray-500">
-          시간대별 데이터가 없습니다
+          {timePeriod === 'daily' && '시간대별 데이터가 없습니다'}
+          {timePeriod === 'monthly' && '요일별 데이터가 없습니다'}
+          {timePeriod === 'yearly' && '주차별 데이터가 없습니다'}
         </div>
       );
     }
@@ -637,46 +842,46 @@ const ReportsSummaryContent = () => {
                 </div>
               </div>
 
-              {/* Time Period Toggle for Hourly Chart */}
+              {/* Chart Content */}
+              {renderChart()}
+
+              {/* Time Period Toggle - 하단으로 이동 */}
               {chartMode === 'hourly' && (
-                <div className="flex items-center justify-center mb-6">
+                <div className="flex items-center justify-center mt-6 pt-4 border-t border-gray-200">
                   <div className="flex bg-red-50 rounded-lg p-1">
                     <button
                       onClick={() => setTimePeriod('daily')}
-                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                         timePeriod === 'daily'
                           ? 'bg-red-600 text-white shadow-sm'
                           : 'text-red-600 hover:text-red-700'
                       }`}
                     >
-                      일
+                      일간
                     </button>
                     <button
                       onClick={() => setTimePeriod('monthly')}
-                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                         timePeriod === 'monthly'
                           ? 'bg-red-600 text-white shadow-sm'
                           : 'text-red-600 hover:text-red-700'
                       }`}
                     >
-                      월
+                      주간
                     </button>
                     <button
                       onClick={() => setTimePeriod('yearly')}
-                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                         timePeriod === 'yearly'
                           ? 'bg-red-600 text-white shadow-sm'
                           : 'text-red-600 hover:text-red-700'
                       }`}
                     >
-                      년
+                      연간
                     </button>
                   </div>
                 </div>
               )}
-
-              {/* Chart Content */}
-              {renderChart()}
             </Card>
           </div>
 
