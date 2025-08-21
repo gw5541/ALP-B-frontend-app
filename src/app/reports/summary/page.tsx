@@ -637,8 +637,20 @@ const ReportsSummaryContent = () => {
       const userId = getStoredUserId();
       const dbDistrictId = districtCodeMap[selectedDistrictId];
       
+      console.log('📝 Summary saveMemo:', {
+        selectedDistrictId,
+        dbDistrictId,
+        districtCodeMap: districtCodeMap[selectedDistrictId]
+      });
+      
+      if (!dbDistrictId) {
+        console.error('❌ Summary: Invalid districtId mapping', { selectedDistrictId, districtCodeMap });
+        throw new Error(`자치구 코드를 찾을 수 없습니다: ${selectedDistrictId}`);
+      }
+      
+      // createNote에 내부 ID를 전달 (createNote 함수에서 DB 코드로 변환)
       await apiClient.createNote(userId, {
-        districtId: dbDistrictId,
+        districtId: selectedDistrictId, // 내부 ID 전달
         content: memo.trim()
       });
       
@@ -669,8 +681,8 @@ const ReportsSummaryContent = () => {
       }
 
       const notePromises = validFavorites.map(async (internalId) => {
-        const dbDistrictId = districtCodeMap[internalId];
-        const notes = await apiClient.getUserNotes(userId, dbDistrictId);
+        console.log(`📝 Summary loadAllNotes: Loading notes for internal ID ${internalId}`);
+        const notes = await apiClient.getUserNotes(userId, internalId); // 내부 ID 직접 전달
         return notes.map(note => ({
           ...note,
           internalDistrictId: internalId // 내부 ID도 함께 저장

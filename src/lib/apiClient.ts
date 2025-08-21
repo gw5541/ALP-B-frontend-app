@@ -382,10 +382,25 @@ class ApiClient {
   }
 
   async createNote(userId: string, request: NoteCreateRequest): Promise<NoteDto> {
-    const districtCode = this.getDistrictCode(request.districtId);
+    // districtId가 이미 DB 코드 형식(11xxx)인지 내부 ID(1-25)인지 확인
+    let districtCode: string | null;
+    if (request.districtId >= 11000) {
+      // 이미 DB 코드 형식
+      districtCode = request.districtId.toString();
+    } else {
+      // 내부 ID 형식이므로 변환 필요
+      districtCode = this.getDistrictCode(request.districtId);
+    }
+    
+    console.log(`📝 createNote: Converting districtId ${request.districtId} to districtCode ${districtCode}`);
+    
+    if (!districtCode) {
+      throw new Error(`Invalid districtId for createNote: ${request.districtId}`);
+    }
+    
     return await this.client.post(`/users/${userId}/notes`, {
       ...request,
-      districtId: districtCode
+      districtId: parseInt(districtCode)
     });
   }
 
