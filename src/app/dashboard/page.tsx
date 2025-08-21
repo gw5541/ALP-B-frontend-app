@@ -103,7 +103,7 @@ const DashboardContent = () => {
   };
 
   const handleDistrictClick = (districtId: number) => {
-    window.open(`/districts/${districtId}`, '_blank');
+    window.location.href = `/districts/${districtId}`;
   };
 
   const handleFavoriteChange = (favorites: (number | null)[]) => {
@@ -208,7 +208,7 @@ const DashboardContent = () => {
               <div>
                 <h4 className="font-semibold text-blue-900 mb-2">🗺️ 지도 인터랙션</h4>
                 <ul className="text-sm text-blue-800 space-y-1">
-                  <li>• 관심 지역으로 설정된 자치구는 연두색으로 표시됩니다</li>
+                  <li>• 관심 지역으로 설정된 자치구는 연한 빨간색으로 표시됩니다</li>
                   <li>• 자치구에 마우스를 올리면 해당 지역이 빨간색으로 표시됩니다</li>
                   <li>• 호버 시 월 평균 인구수와 시간대별 변화를 확인할 수 있습니다</li>
                   <li>• 자치구를 클릭하면 상세 분석 페이지로 이동합니다</li>

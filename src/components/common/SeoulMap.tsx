@@ -123,9 +123,9 @@ const SeoulMap = ({
       strokeColor = '#dc2626';
       strokeWidth = '2';
     } else if (isFavorite) {
-      // 관심 지역인 경우 연두색
-      fillColor = '#84cc16'; // lime-500
-      strokeColor = '#65a30d'; // lime-600
+      // 관심 지역인 경우 조금 더 진한 빨간색
+      fillColor = '#fee2e2'; // red-100 (red-50보다 조금 더 진함)
+      strokeColor = '#dc2626'; // red-600 (summary 페이지 버튼 텍스트와 동일)
       strokeWidth = '1.5';
     }
     
