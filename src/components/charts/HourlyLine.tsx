@@ -28,6 +28,7 @@ const HourlyLine = ({
   console.log('Series type:', typeof series);
   console.log('Series is array:', Array.isArray(series));
   console.log('Series length:', series?.length);
+  console.log('Chart type:', chartType); // 🔧 추가: 차트 타입 로그
 
   // 🔧 수정: series 유효성 검사를 맨 위로 이동
   if (!series || !Array.isArray(series) || series.length === 0) {
@@ -46,12 +47,14 @@ const HourlyLine = ({
     console.log(`  - hour: ${point?.hour} (type: ${typeof point?.hour})`);
     console.log(`  - total: ${point?.total} (type: ${typeof point?.total})`);
     console.log(`  - value: ${point?.value} (type: ${typeof point?.value})`);
+    console.log(`  - hourLabel: ${point?.hourLabel} (type: ${typeof point?.hourLabel})`);
     console.log(`  - valid: ${point && typeof point.hour === 'number' && (typeof point.total === 'number' || typeof point.value === 'number')}`);
   });
 
   // 🔧 수정: 차트 타입에 따른 데이터 변환
   const chartData = series
     .filter(point => {
+      // hour 필드와 total 또는 value 필드가 있는지 확인
       const hasHour = point && typeof point.hour === 'number';
       const hasValue = typeof point.total === 'number' || typeof point.value === 'number';
       const isValid = hasHour && hasValue;
@@ -68,8 +71,9 @@ const HourlyLine = ({
       if (chartType === 'weekly' && point.hourLabel) {
         // 주간 차트의 경우 전달받은 hourLabel(요일명) 사용
         labelValue = point.hourLabel;
-      } else if (point.hourLabel) {
-        // 기존 hourLabel이 있으면 사용
+        console.log(`📅 Weekly label: ${labelValue} for hour: ${point.hour}`);
+      } else if (point.hourLabel && chartType === 'hourly') {
+        // 일간 차트에서 기존 hourLabel이 있으면 사용
         labelValue = point.hourLabel;
       } else {
         // 없으면 시간 형식으로 생성 (일간 차트용)
@@ -84,6 +88,7 @@ const HourlyLine = ({
     });
 
   console.log('✅ 필터링 후 chartData:', chartData);
+  console.log('✅ Chart labels:', chartData.map(item => item.hourLabel));
   console.log('ChartData length:', chartData.length);
 
   // 🔧 추가: 변환된 데이터가 비어있는 경우 처리

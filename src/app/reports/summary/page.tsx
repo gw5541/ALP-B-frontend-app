@@ -16,8 +16,16 @@ import {
   HourlyTrendDto,
   District 
 } from '@/lib/types';
+import { buildAgeDistributionFromBuckets } from '@/lib/charts/pyramid'; // 🔧 추가
 import { apiClient } from '@/lib/apiClient';
-import { getToday, getLastMonth, getErrorMessage, parseSearchParams } from '@/lib/utils';
+import { 
+  getToday, 
+  getTwentyDaysAgo,  // 🔧 추가
+  getLastMonth, 
+  getErrorMessage, 
+  parseSearchParams,
+  getStoredUserId  // 🔧 추가
+} from '@/lib/utils';
 import { DISTRICTS } from '@/components/common/SeoulMap';
 
 type ChartMode = 'hourly' | 'pyramid';
@@ -58,15 +66,59 @@ const ReportsSummaryContent = () => {
     }
   };
 
-  const loadFavoriteDistricts = () => {
+  const loadFavoriteDistricts = async () => {
     try {
-      const saved = localStorage.getItem('favoriteDistricts');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setFavoriteDistricts(parsed);
-      }
+      // 🔧 수정: 백엔드 API 사용으로 변경
+      setError(null);
+      
+      const userId = getStoredUserId();
+      const favorites = await apiClient.getUserFavorites(userId);
+      
+      console.log('📍 Summary: 백엔드에서 불러온 관심 지역:', favorites);
+      
+      // 🔧 수정: 백엔드에서 온 districtId를 내부 ID로 변환
+      const favoriteIds = favorites.map(fav => {
+        // DB 코드 (11xxx)를 내부 ID (1-25)로 변환
+        const district = DISTRICTS.find(d => {
+          // DISTRICTS 배열에서 매칭되는 DB 코드 찾기 (메모리 매핑 사용)
+          const DISTRICT_CODE_MAP: Record<number, string> = {
+            1: '11680', 2: '11740', 3: '11305', 4: '11500', 5: '11620',
+            6: '11215', 7: '11530', 8: '11545', 9: '11350', 10: '11320',
+            11: '11230', 12: '11590', 13: '11440', 14: '11410', 15: '11650',
+            16: '11200', 17: '11290', 18: '11710', 19: '11470', 20: '11560',
+            21: '11170', 22: '11380', 23: '11110', 24: '11140', 25: '11260'
+          };
+          
+          return DISTRICT_CODE_MAP[d.id] === fav.districtId.toString();
+        });
+        
+        return district ? district.id : null;
+      }).filter((id): id is number => id !== null);
+      
+      // 3개 슬롯에 맞게 변환 (부족한 부분은 null로 채우기)
+      const paddedFavorites: (number | null)[] = [
+        favoriteIds[0] || null,
+        favoriteIds[1] || null,
+        favoriteIds[2] || null
+      ];
+      
+      console.log('📍 Summary: 변환된 관심 지역 배열:', paddedFavorites);
+      
+      setFavoriteDistricts(paddedFavorites);
     } catch (err) {
-      console.error('Failed to load favorite districts:', err);
+      console.error('Failed to load favorite districts from backend:', err);
+      
+      // 🔧 fallback: localStorage에서 불러오기
+      try {
+        const saved = localStorage.getItem('favoriteDistricts');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setFavoriteDistricts(parsed);
+          console.log('📍 Summary: Fallback to localStorage favorites:', parsed);
+        }
+      } catch (localErr) {
+        console.error('Failed to load favorite districts from localStorage:', localErr);
+      }
     }
   };
 
@@ -75,16 +127,46 @@ const ReportsSummaryContent = () => {
       setLoading(true);
       setError(null);
 
-      const params = {
-        period: 'MONTHLY' as const,
-        from: filters.from || getLastMonth(),
-        to: filters.to || getToday(),
-        gender: filters.gender,
-        ageBucket: filters.ageBucket
-      };
+      if (filters.districtId) {
+        // 🔧 특정 자치구가 선택된 경우
+        const params = {
+          period: 'MONTHLY' as const,
+          districtId: filters.districtId,
+          from: filters.from || getLastMonth(),
+          to: filters.to || getTwentyDaysAgo(),
+          gender: filters.gender,
+          ageBucket: filters.ageBucket
+        };
 
-      const stats = await apiClient.getPopulationStats(params);
-      setMonthlyStats(stats);
+        console.log('📊 Summary: Loading monthly stats for specific district:', params);
+        const stats = await apiClient.getPopulationStats(params);
+        setMonthlyStats(stats);
+      } else {
+        // 🔧 자치구가 선택되지 않은 경우, 관심 지역들의 데이터 가져오기
+        const selectedDistricts = favoriteDistricts.filter((id): id is number => id !== null);
+        
+        if (selectedDistricts.length > 0) {
+          console.log('📊 Summary: Loading monthly stats for favorite districts (internal IDs):', selectedDistricts);
+          
+          const statsPromises = selectedDistricts.map(internalDistrictId => 
+            apiClient.getPopulationStats({
+              period: 'MONTHLY' as const,
+              districtId: internalDistrictId, // 🔧 내부 ID 전달 (apiClient에서 자동 변환)
+              from: filters.from || getLastMonth(),
+              to: filters.to || getTwentyDaysAgo(),
+              gender: filters.gender,
+              ageBucket: filters.ageBucket
+            })
+          );
+
+          const statsResponses = await Promise.all(statsPromises);
+          const allStats = statsResponses.flat();
+          setMonthlyStats(allStats);
+        } else {
+          console.log('📊 Summary: No districts selected, clearing monthly stats');
+          setMonthlyStats([]);
+        }
+      }
     } catch (err) {
       setError(getErrorMessage(err));
       console.error('Failed to load monthly stats:', err);
@@ -100,16 +182,15 @@ const ReportsSummaryContent = () => {
       if (chartMode === 'hourly') {
         const districtId = filters.districtId;
         const params = {
-          districtId,  // 🔧 여기서 districtId는 optional
-          date: filters.date || getToday(),
+          districtId,
+          date: filters.date || getTwentyDaysAgo(), // 🔧 수정: 20일 전 기준
           gender: filters.gender,
           ageBucket: filters.ageBucket
         };
 
         if (districtId) {
-          // 🔧 수정: districtId가 있을 때만 API 호출하고, 타입 안전하게 전달
           const hourlyResponse = await apiClient.getHourlyTrends({
-            districtId, // if 문 안에 있으므로 districtId는 확실히 존재
+            districtId,
             date: params.date,
             gender: params.gender,
             ageBucket: params.ageBucket
@@ -129,14 +210,67 @@ const ReportsSummaryContent = () => {
           setHourlyData(hourlyResponses);
         }
       } else if (chartMode === 'pyramid') {
+        // 🔧 수정: getPopulationStats와 buildAgeDistributionFromBuckets 사용
+        const targetDistrictId = filters.districtId || 1;
+        const baseDate = getTwentyDaysAgo();
+        
         const params = {
-          districtId: filters.districtId || 1,
-          from: filters.from || getLastMonth(),
-          to: filters.to || getToday()
+          districtId: targetDistrictId,
+          period: 'DAILY' as const, // 🔧 수정: DAILY period 사용
+          from: filters.from || baseDate,
+          to: filters.to || baseDate,
+          gender: filters.gender,
+          ageBucket: filters.ageBucket
         };
 
-        const ageResponse = await apiClient.getAgeDistribution(params);
-        setAgeDistribution(ageResponse);
+        console.log('📊 Summary: Loading age distribution via stats API:', params);
+
+        try {
+          // 🔧 수정: getPopulationStats로 변경
+          const statsResponse = await apiClient.getPopulationStats(params);
+          
+          console.log('📊 Summary: Stats response for age distribution:', statsResponse);
+          
+          if (statsResponse && statsResponse.length > 0) {
+            const ageStats = statsResponse[0];
+            
+            if (ageStats.maleBucketsAvg && ageStats.femaleBucketsAvg) {
+              // 🔧 수정: buildAgeDistributionFromBuckets로 변환
+              const ageDistributionArray = buildAgeDistributionFromBuckets(
+                ageStats.maleBucketsAvg,
+                ageStats.femaleBucketsAvg
+              );
+
+              console.log('📊 Summary: Converted age distribution array:', ageDistributionArray);
+
+              if (ageDistributionArray.length > 0) {
+                // AgeDistributionDto 형태로 구성
+                const ageDistributionDto: AgeDistributionDto = {
+                  districtId: ageStats.districtId,
+                  districtName: ageStats.districtName,
+                  from: params.from,
+                  to: params.to,
+                  ageDistribution: ageDistributionArray
+                };
+
+                console.log('✅ Summary: Final ageDistributionDto:', ageDistributionDto);
+                setAgeDistribution(ageDistributionDto);
+              } else {
+                console.log('❌ Summary: Converted age distribution array is empty');
+                setAgeDistribution(null);
+              }
+            } else {
+              console.log('❌ Summary: No maleBucketsAvg or femaleBucketsAvg in stats response');
+              setAgeDistribution(null);
+            }
+          } else {
+            console.log('❌ Summary: No stats data for age distribution');
+            setAgeDistribution(null);
+          }
+        } catch (ageError) {
+          console.error('❌ Summary: Age distribution loading failed:', ageError);
+          setAgeDistribution(null);
+        }
       }
     } catch (err) {
       console.error('Failed to load chart data:', err);

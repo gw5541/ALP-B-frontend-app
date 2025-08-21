@@ -39,10 +39,10 @@ import {
   formatPopulation, 
   parseSearchParams, 
   buildSearchParams, 
-  getStoredUserId,
-  formatWeekday,
-  formatMonthDay
+  getStoredUserId
+  // 🔧 제거: formatWeekday, formatMonthDay (정의되지 않은 함수들)
 } from '@/lib/utils';
+import { DISTRICTS } from '@/components/common/SeoulMap'; // 🔧 추가
 
 const DistrictDetailPage = () => {
   const params = useParams();
@@ -153,17 +153,17 @@ const DistrictDetailPage = () => {
       const districts = await apiClient.getDistricts();
       const currentDistrict = districts.find(d => d.id === districtId);
       
-      // 🔧 수정: 자치구 매핑 사용
+      // 🔧 수정: 대시보드 SeoulMap과 동일한 자치구 매핑 사용
       let districtName = currentDistrict?.name;
       
       if (!districtName) {
-        // 🔧 추가: districtId에 따른 자치구 이름 매핑
+        // 🔧 수정: 대시보드 DISTRICTS 배열과 동일한 매핑
         const DISTRICT_NAME_MAP: Record<number, string> = {
-          1: '종로구', 2: '중구', 3: '용산구', 4: '성동구', 5: '광진구',
-          6: '동대문구', 7: '중랑구', 8: '성북구', 9: '강북구', 10: '도봉구',
-          11: '노원구', 12: '은평구', 13: '서대문구', 14: '마포구', 15: '양천구',
-          16: '강서구', 17: '구로구', 18: '금천구', 19: '영등포구', 20: '동작구',
-          21: '관악구', 22: '서초구', 23: '강남구', 24: '송파구', 25: '강동구'
+          1: '강남구', 2: '강동구', 3: '강북구', 4: '강서구', 5: '관악구',
+          6: '광진구', 7: '구로구', 8: '금천구', 9: '노원구', 10: '도봉구',
+          11: '동대문구', 12: '동작구', 13: '마포구', 14: '서대문구', 15: '서초구',
+          16: '성동구', 17: '성북구', 18: '송파구', 19: '양천구', 20: '영등포구',
+          21: '용산구', 22: '은평구', 23: '종로구', 24: '중구', 25: '중랑구'
         };
         
         districtName = DISTRICT_NAME_MAP[districtId] || `자치구 ${districtId}`;
@@ -747,10 +747,10 @@ const DistrictDetailPage = () => {
           
           if (hasValidWeeklyData) {
             return (
-              <HourlyLine 
-                series={weeklyChartData}
+          <HourlyLine 
+            series={weeklyChartData}
                 title="주간 인구 현황 (요일별 평균)"
-                height={350}
+            height={350}
                 chartType="weekly" // 🔧 추가: 주간 차트임을 명시
               />
             );
@@ -766,13 +766,13 @@ const DistrictDetailPage = () => {
           }
         } else {
           return (
-            <div className="h-64 flex items-center justify-center text-gray-500">
+          <div className="h-64 flex items-center justify-center text-gray-500">
               <div className="text-center">
                 <p>해당 기간의 주간 데이터가 없습니다</p>
                 <p className="text-sm mt-1">다른 기간을 선택해보세요</p>
               </div>
-            </div>
-          );
+          </div>
+        );
         }
 
       case 'monthly':
