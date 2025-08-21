@@ -176,7 +176,7 @@ const FilterBar = ({
                 onChange={(e) => updateFilter('districtId', e.target.value ? parseInt(e.target.value) : undefined)}
                 className="text-sm border border-gray-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
               >
-                <option value="">전체</option>
+                <option key="all-districts" value="">전체</option>
                 {districts.map((district) => (
                   <option key={district.id} value={district.id}>
                     {district.name}

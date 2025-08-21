@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { DISTRICTS } from './SeoulMap';
 import { apiClient } from '@/lib/apiClient';
 import { FavoriteDto } from '@/lib/types';
-import { getStoredUserId, getErrorMessage } from '@/lib/utils';
+import { getStoredUserId, getErrorMessage, convertDbCodeToInternalId } from '@/lib/utils';
 
 interface FavoriteDropdownsProps {
   onFavoriteChange?: (favorites: (number | null)[]) => void;
@@ -22,7 +22,7 @@ const FavoriteDropdowns = ({ onFavoriteChange, className = '' }: FavoriteDropdow
     loadFavoritesFromBackend();
   }, []);
 
-  // 🔧 수정: 백엔드에서 관심 지역 불러오기
+  // 🔧 수정: 백엔드에서 관심 지역 불러오기 + 코드 매핑
   const loadFavoritesFromBackend = async () => {
     try {
       setIsLoading(true);
@@ -31,25 +31,31 @@ const FavoriteDropdowns = ({ onFavoriteChange, className = '' }: FavoriteDropdow
       const userId = getStoredUserId();
       const favorites = await apiClient.getUserFavorites(userId);
       
-      console.log('📍 백엔드에서 불러온 관심 지역:', favorites);
-      console.log('📍 사용자 ID:', userId);
+      console.log('📍 FavoriteDropdowns: 백엔드에서 불러온 관심 지역:', favorites);
+      console.log('📍 FavoriteDropdowns: 사용자 ID:', userId);
       
-      // 🔧 수정: 백엔드 데이터를 3개 슬롯에 맞게 변환 (부족한 부분은 null로 채우기)
-      const favoriteIds = favorites.map(fav => fav.districtId);
+      // 🔧 수정: DB 코드(11xxx)를 내부 ID(1-25)로 변환
+      const favoriteInternalIds = favorites.map(fav => {
+        const internalId = convertDbCodeToInternalId(fav.districtId);
+        console.log(`📍 FavoriteDropdowns: DB 코드 ${fav.districtId} -> 내부 ID ${internalId}`);
+        return internalId;
+      }).filter((id): id is number => id !== null);
+      
+      // 3개 슬롯에 맞게 변환 (부족한 부분은 null로 채우기)
       const paddedFavorites: (number | null)[] = [
-        favoriteIds[0] || null,
-        favoriteIds[1] || null,
-        favoriteIds[2] || null
+        favoriteInternalIds[0] || null,
+        favoriteInternalIds[1] || null,
+        favoriteInternalIds[2] || null
       ];
       
-      console.log('📍 변환된 관심 지역 배열:', paddedFavorites);
+      console.log('📍 FavoriteDropdowns: 변환된 관심 지역 배열:', paddedFavorites);
       
       setSelectedFavorites(paddedFavorites);
       setIsInitialized(true);
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       setError(errorMessage);
-      console.error('❌ 관심 지역 불러오기 실패:', err);
+      console.error('❌ FavoriteDropdowns: 관심 지역 불러오기 실패:', err);
       
       // 🔧 수정: 에러 시에도 기본값 [null, null, null] 유지
       setSelectedFavorites([null, null, null]);
@@ -59,26 +65,26 @@ const FavoriteDropdowns = ({ onFavoriteChange, className = '' }: FavoriteDropdow
     }
   };
 
-  // 🔧 추가: 백엔드에 관심 지역 저장
-  const saveFavoriteToBackend = async (districtId: number) => {
+  // 🔧 수정: 백엔드에 관심 지역 저장 (내부 ID 그대로 전달, apiClient에서 변환 처리)
+  const saveFavoriteToBackend = async (internalDistrictId: number) => {
     try {
       const userId = getStoredUserId();
-      await apiClient.addUserFavorite(userId, { districtId });
-      console.log('✅ 관심 지역 추가 성공:', districtId);
+      await apiClient.addUserFavorite(userId, { districtId: internalDistrictId });
+      console.log('✅ FavoriteDropdowns: 관심 지역 추가 성공:', `내부 ID ${internalDistrictId}`);
     } catch (err) {
-      console.error('❌ 관심 지역 추가 실패:', err);
+      console.error('❌ FavoriteDropdowns: 관심 지역 추가 실패:', err);
       throw err;
     }
   };
 
-  // 🔧 추가: 백엔드에서 관심 지역 삭제
-  const removeFavoriteFromBackend = async (districtId: number) => {
+  // 🔧 수정: 백엔드에서 관심 지역 삭제 (내부 ID 그대로 전달, apiClient에서 변환 처리)
+  const removeFavoriteFromBackend = async (internalDistrictId: number) => {
     try {
       const userId = getStoredUserId();
-      await apiClient.removeUserFavorite(userId, districtId);
-      console.log('✅ 관심 지역 삭제 성공:', districtId);
+      await apiClient.removeUserFavorite(userId, internalDistrictId);
+      console.log('✅ FavoriteDropdowns: 관심 지역 삭제 성공:', `내부 ID ${internalDistrictId}`);
     } catch (err) {
-      console.error('❌ 관심 지역 삭제 실패:', err);
+      console.error('❌ FavoriteDropdowns: 관심 지역 삭제 실패:', err);
       throw err;
     }
   };
@@ -98,7 +104,7 @@ const FavoriteDropdowns = ({ onFavoriteChange, className = '' }: FavoriteDropdow
       setIsLoading(true);
       setError(null);
 
-      // 🔧 수정: 백엔드 API 호출
+      // 🔧 수정: 백엔드 API 호출 (내부 ID 사용)
       if (oldDistrictId && oldDistrictId !== newDistrictId) {
         // 기존 관심 지역 삭제
         await removeFavoriteFromBackend(oldDistrictId);
@@ -114,12 +120,12 @@ const FavoriteDropdowns = ({ onFavoriteChange, className = '' }: FavoriteDropdow
       newFavorites[index] = newDistrictId;
       setSelectedFavorites(newFavorites);
       
-      console.log('📍 업데이트된 관심 지역:', newFavorites);
+      console.log('📍 FavoriteDropdowns: 업데이트된 관심 지역:', newFavorites);
       
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       setError(errorMessage);
-      console.error('관심 지역 변경 실패:', err);
+      console.error('FavoriteDropdowns: 관심 지역 변경 실패:', err);
       
       // 에러 시 변경 취소 - 상태는 이전 값 유지
     } finally {

@@ -158,3 +158,29 @@ export const getGenderLabel = (gender: string): string => {
   };
   return labels[gender] || gender;
 };
+
+// District code mapping utilities
+// DB에서 사용하는 행정구역 코드(11xxx)와 프론트엔드 내부 ID(1-25) 매핑
+const DISTRICT_CODE_MAP: Record<number, string> = {
+  1: '11680', 2: '11740', 3: '11305', 4: '11500', 5: '11620',
+  6: '11215', 7: '11530', 8: '11545', 9: '11350', 10: '11320',
+  11: '11230', 12: '11590', 13: '11440', 14: '11410', 15: '11650',
+  16: '11200', 17: '11290', 18: '11710', 19: '11470', 20: '11560',
+  21: '11170', 22: '11380', 23: '11110', 24: '11140', 25: '11260'
+};
+
+// DB 코드(11xxx)를 내부 ID(1-25)로 변환
+export const convertDbCodeToInternalId = (dbCode: string | number): number | null => {
+  const codeStr = dbCode.toString();
+  for (const [internalId, code] of Object.entries(DISTRICT_CODE_MAP)) {
+    if (code === codeStr) {
+      return parseInt(internalId);
+    }
+  }
+  return null;
+};
+
+// 내부 ID(1-25)를 DB 코드(11xxx)로 변환
+export const convertInternalIdToDbCode = (internalId: number): string | null => {
+  return DISTRICT_CODE_MAP[internalId] || null;
+};

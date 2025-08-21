@@ -312,16 +312,20 @@ class ApiClient {
 
   async addUserFavorite(userId: string, request: FavoriteCreateRequest): Promise<FavoriteDto> {
     const districtCode = this.getDistrictCode(request.districtId);
+    if (!districtCode) {
+      throw new Error(`지역 ID는 필수입니다: ${request.districtId}`);
+    }
     return await this.client.post(`/users/${userId}/favorites`, {
-      districtId: districtCode
+      districtId: parseInt(districtCode)
     });
   }
 
   async removeUserFavorite(userId: string, districtId: number): Promise<void> {
     const districtCode = this.getDistrictCode(districtId);
-    if (districtCode) {
-      await this.client.delete(`/users/${userId}/favorites/${districtCode}`);
+    if (!districtCode) {
+      throw new Error(`지역 ID는 필수입니다: ${districtId}`);
     }
+    await this.client.delete(`/users/${userId}/favorites/${districtCode}`);
   }
 
   // ====== 4. Notes API - 에러 7, 8, 9 수정 ======
