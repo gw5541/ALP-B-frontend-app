@@ -88,6 +88,12 @@ const DistrictDetailPage = () => {
   const [memoLoading, setMemoLoading] = useState<boolean>(false);
   const [memoError, setMemoError] = useState<string | null>(null);
   const [currentNote, setCurrentNote] = useState<NoteDto | null>(null);
+  
+  // 메모 목록 관련 state들
+  const [allNotes, setAllNotes] = useState<NoteDto[]>([]);
+  const [notesLoading, setNotesLoading] = useState<boolean>(false);
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editingContent, setEditingContent] = useState<string>('');
 
   // 에러 처리 개선
   const [apiErrors, setApiErrors] = useState<{
@@ -102,6 +108,7 @@ const DistrictDetailPage = () => {
   useEffect(() => {
     loadDistrictInfo();
     loadMemo();
+    loadAllNotes();
   }, [districtId]);
 
   // 🔧 수정: 탭 변경 시 highlights 업데이트
@@ -580,6 +587,9 @@ const DistrictDetailPage = () => {
         setMemoDate(new Date(savedNote.createdAt).toLocaleDateString('ko-KR'));
         setMemoSaved(true);
         
+        // 메모 목록도 업데이트
+        loadAllNotes();
+        
         setTimeout(() => {
           setMemoSaved(false);
         }, 3000);
@@ -629,6 +639,127 @@ const DistrictDetailPage = () => {
     if (value.length <= 500) {
       setMemo(value);
       setMemoSaved(false);
+    }
+  };
+
+  // 메모 목록 불러오기
+  const loadAllNotes = async () => {
+    try {
+      setNotesLoading(true);
+      const userId = getStoredUserId();
+      
+      // 현재 자치구의 DB 코드 가져오기 - 메모리의 매핑 정보 사용
+      const districtCodeMap: Record<number, number> = {
+        1: 11680,   // 강남구
+        2: 11740,   // 강동구  
+        3: 11305,   // 강북구
+        4: 11500,   // 강서구
+        5: 11620,   // 관악구
+        6: 11215,   // 광진구
+        7: 11530,   // 구로구
+        8: 11545,   // 금천구
+        9: 11350,   // 노원구
+        10: 11320,  // 도봉구
+        11: 11230,  // 동대문구
+        12: 11590,  // 동작구
+        13: 11440,  // 마포구
+        14: 11410,  // 서대문구
+        15: 11650,  // 서초구
+        16: 11200,  // 성동구
+        17: 11290,  // 성북구
+        18: 11710,  // 송파구
+        19: 11470,  // 양천구
+        20: 11560,  // 영등포구
+        21: 11170,  // 용산구
+        22: 11380,  // 은평구
+        23: 11110,  // 종로구
+        24: 11140,  // 중구
+        25: 11260   // 중랑구
+      };
+      
+      const dbDistrictId = districtCodeMap[districtId];
+      const notes = await apiClient.getUserNotes(userId, dbDistrictId);
+      
+      // 최신순으로 정렬
+      const sortedNotes = notes.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      
+      setAllNotes(sortedNotes);
+    } catch (err) {
+      console.error('Failed to load all notes:', err);
+    } finally {
+      setNotesLoading(false);
+    }
+  };
+
+  // 메모 수정 시작
+  const startEditingNote = (note: NoteDto) => {
+    setEditingNoteId(note.noteId);
+    setEditingContent(note.content);
+  };
+
+  // 메모 수정 취소
+  const cancelEditingNote = () => {
+    setEditingNoteId(null);
+    setEditingContent('');
+  };
+
+  // 메모 수정 저장
+  const saveEditingNote = async () => {
+    if (!editingNoteId || !editingContent.trim()) return;
+
+    try {
+      setNotesLoading(true);
+      const userId = getStoredUserId();
+      
+      const updatedNote = await apiClient.updateNote(userId, editingNoteId, {
+        content: editingContent.trim()
+      });
+
+      // 목록에서 해당 메모 업데이트
+      setAllNotes(prev => prev.map(note => 
+        note.noteId === editingNoteId ? updatedNote : note
+      ));
+
+      // 현재 편집 중인 메모가 업데이트된 메모인 경우, 현재 메모도 업데이트
+      if (currentNote?.noteId === editingNoteId) {
+        setCurrentNote(updatedNote);
+        setMemo(updatedNote.content);
+        setMemoDate(new Date(updatedNote.createdAt).toLocaleDateString('ko-KR'));
+      }
+
+      setEditingNoteId(null);
+      setEditingContent('');
+    } catch (err) {
+      console.error('Failed to update note:', err);
+    } finally {
+      setNotesLoading(false);
+    }
+  };
+
+  // 메모 삭제 (목록에서)
+  const deleteNoteFromList = async (noteId: number) => {
+    if (!confirm('이 메모를 삭제하시겠습니까?')) return;
+
+    try {
+      setNotesLoading(true);
+      const userId = getStoredUserId();
+      await apiClient.deleteNote(userId, noteId);
+
+      // 목록에서 제거
+      setAllNotes(prev => prev.filter(note => note.noteId !== noteId));
+
+      // 현재 메모가 삭제된 메모인 경우 초기화
+      if (currentNote?.noteId === noteId) {
+        setCurrentNote(null);
+        setMemo('');
+        setMemoDate('');
+      }
+    } catch (err) {
+      console.error('Failed to delete note:', err);
+    } finally {
+      setNotesLoading(false);
     }
   };
 
@@ -1211,63 +1342,129 @@ const DistrictDetailPage = () => {
                     </div>
                   </div>
                   
-                  <div className="text-xs text-gray-400 border-t pt-2">
-                    💡 메모는 서버에 안전하게 저장되며, 어디서든 접근할 수 있습니다.
-                    {apiErrors.memo && ' (현재 오류로 인해 로컬에 임시 저장됩니다.)'}
-                  </div>
+
                 </div>
               </Card>
             </div>
 
-            {/* 하단 우측: 추가 기능 */}
+            {/* 하단 우측: 메모 목록 */}
             <div>
-              <Card title="추가 기능">
+              <Card title="메모 목록">
                 <div className="space-y-4">
-                  <a
-                    href="/dashboard"
-                    className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <h4 className="font-semibold text-gray-900 mb-2">대시보드로 돌아가기</h4>
-                    <p className="text-sm text-gray-600">전체 서울시 현황 확인</p>
-                  </a>
-                  
-                  <a
-                    href="/reports/summary"
-                    className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <h4 className="font-semibold text-gray-900 mb-2">요약 보고서</h4>
-                    <p className="text-sm text-gray-600">관심 자치구 비교 분석</p>
-                  </a>
+                  {notesLoading && (
+                    <div className="flex items-center justify-center p-4">
+                      <LoadingSpinner size="sm" message="메모를 불러오는 중..." />
+                    </div>
+                  )}
 
-                  {/* 추가 액션들 */}
-                  <div className="space-y-2 pt-2 border-t border-gray-200">
-                    <button
-                      onClick={() => window.print()}
-                      className="w-full p-3 text-left border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex items-center">
-                        <svg className="w-4 h-4 mr-2 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                        </svg>
-                        <span className="text-sm font-medium">페이지 인쇄</span>
-                      </div>
-                    </button>
+                  {!notesLoading && allNotes.length === 0 && (
+                    <div className="text-center p-6 text-gray-500">
+                      <p className="text-sm">저장된 메모가 없습니다.</p>
+                      <p className="text-xs mt-1">왼쪽 메모 카드에서 새로운 메모를 작성해보세요.</p>
+                    </div>
+                  )}
 
-                    <button
-                      onClick={() => {
-                        const url = window.location.href;
-                        navigator.clipboard.writeText(url);
-                        alert('페이지 링크가 복사되었습니다!');
-                      }}
-                      className="w-full p-3 text-left border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex items-center">
-                        <svg className="w-4 h-4 mr-2 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
-                        </svg>
-                        <span className="text-sm font-medium">링크 공유</span>
-                      </div>
-                    </button>
+                  {!notesLoading && allNotes.length > 0 && (
+                    <div className="max-h-96 overflow-y-auto space-y-3">
+                      {allNotes.map((note) => (
+                        <div
+                          key={note.noteId}
+                          className="p-3 border border-gray-200 rounded-lg bg-gray-50"
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <span className="text-xs text-gray-500">
+                              {new Date(note.createdAt).toLocaleDateString('ko-KR', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                            <div className="flex items-center space-x-1">
+                              {editingNoteId === note.noteId ? (
+                                <>
+                                  <button
+                                    onClick={saveEditingNote}
+                                    disabled={notesLoading || !editingContent.trim()}
+                                    className="text-xs text-green-600 hover:text-green-700 disabled:opacity-50"
+                                  >
+                                    저장
+                                  </button>
+                                  <button
+                                    onClick={cancelEditingNote}
+                                    disabled={notesLoading}
+                                    className="text-xs text-gray-600 hover:text-gray-700 disabled:opacity-50"
+                                  >
+                                    취소
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => startEditingNote(note)}
+                                    disabled={notesLoading}
+                                    className="text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                                  >
+                                    수정
+                                  </button>
+                                  <button
+                                    onClick={() => deleteNoteFromList(note.noteId)}
+                                    disabled={notesLoading}
+                                    className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                                  >
+                                    삭제
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {editingNoteId === note.noteId ? (
+                            <textarea
+                              value={editingContent}
+                              onChange={(e) => setEditingContent(e.target.value)}
+                              disabled={notesLoading}
+                              className="w-full h-20 p-2 text-xs border border-gray-300 rounded resize-none focus:ring-1 focus:ring-red-500 focus:border-red-500 disabled:opacity-50"
+                              placeholder="메모 내용을 입력하세요..."
+                            />
+                          ) : (
+                            <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                              {note.content.length > 100 
+                                ? `${note.content.substring(0, 100)}...` 
+                                : note.content
+                              }
+                            </p>
+                          )}
+
+                          {note.content.length > 100 && editingNoteId !== note.noteId && (
+                            <button
+                              onClick={() => startEditingNote(note)}
+                              className="text-xs text-blue-600 hover:text-blue-700 mt-2"
+                            >
+                              전체 보기/수정
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 하단 빠른 액션 */}
+                  <div className="pt-4 border-t border-gray-200">
+                    <div className="flex flex-wrap gap-2">
+                      <a
+                        href="/dashboard"
+                        className="flex-1 min-w-0 px-3 py-2 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-center"
+                      >
+                        대시보드
+                      </a>
+                      <a
+                        href="/reports/summary"
+                        className="flex-1 min-w-0 px-3 py-2 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-center"
+                      >
+                        요약 보고서
+                      </a>
+                    </div>
                   </div>
                 </div>
               </Card>
