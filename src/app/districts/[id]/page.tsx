@@ -1035,7 +1035,7 @@ const DistrictDetailPage = () => {
         return hasAgeData && ageData ? (
           <Pyramid 
             data={ageData}  // 🔧 수정: 안전하게 추출된 데이터 사용
-            title="연령대별 인구 분포"
+            title=""  // 제목 숨기기
             height={350}
           />
         ) : (
@@ -1250,7 +1250,7 @@ const DistrictDetailPage = () => {
 
                   if (hasValidAgeData) {
                     console.log('🎯 About to render Pyramid with data:', ageDistribution.ageDistribution);
-                    return <Pyramid data={ageDistribution.ageDistribution} height={420} />;
+                    return <Pyramid data={ageDistribution.ageDistribution} title="" height={420} />;
                   } else if (loading) {
                     console.log('🔄 Showing loading spinner for age data');
                     return <LoadingSpinner size="lg" message="연령대별 데이터 로딩 중..." />;

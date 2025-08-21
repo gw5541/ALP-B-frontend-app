@@ -11,7 +11,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { SkeletonChart } from '@/components/common/Skeleton';
 import { HourlyTrendDto, MonthlyTrendDto } from '@/lib/types';
 import { apiClient } from '@/lib/apiClient';
-import { getTenDaysAgo, getLastMonth, getErrorMessage, formatPopulation } from '@/lib/utils';
+import { getTwentyDaysAgo, getLastMonth, getErrorMessage, formatPopulation } from '@/lib/utils';
 
 // Dashboard 컴포넌트를 별도로 분리
 const DashboardContent = () => {
@@ -46,11 +46,11 @@ const DashboardContent = () => {
       setLoading(true);
       setError(null);
 
-      // 🔧 수정: API 호출을 병렬로 실행 (날짜를 10일 전으로 변경)
+      // 🔧 수정: API 호출을 병렬로 실행 (날짜를 20일 전으로 변경)
       const [hourlyResponse, monthlyResponse] = await Promise.all([
         apiClient.getHourlyTrends({
           districtId,
-          date: getTenDaysAgo()  // 🔧 오늘 날짜 대신 10일 전 사용 (DB에 데이터가 있는 날짜)
+          date: getTwentyDaysAgo()  // 🔧 오늘 날짜 대신 20일 전 사용 (DB에 데이터가 있는 날짜)
         }),
         apiClient.getMonthlyTrends({
           districtId,
@@ -60,7 +60,7 @@ const DashboardContent = () => {
 
       // 🔧 디버깅: API 응답 로그 추가
       console.log('🔍 API Response Debug:');
-      console.log('Date requested:', getTenDaysAgo());
+      console.log('Date requested:', getTwentyDaysAgo());
       console.log('Hourly Response:', hourlyResponse);
       console.log('Monthly Response:', monthlyResponse);
       console.log('Monthly Data Length:', monthlyResponse?.monthlyData?.length);

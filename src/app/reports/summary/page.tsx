@@ -891,7 +891,7 @@ const ReportsSummaryContent = () => {
         const periodLabel = '일간 평균'; // 연령대별 분포는 항상 일간 데이터 사용
         return (
           <div className="space-y-6">
-            <h4 className="text-lg font-medium text-gray-900 mb-4">{periodLabel} 관심 지역별 연령대별 인구 분포</h4>
+            <h4 className="text-lg font-medium text-gray-900 mb-4">{periodLabel} 연령대별 인구 분포</h4>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {favoriteAgeDistributions.map((data, index) => (
                 <div key={data.districtId || index} className="bg-white border border-gray-200 rounded-lg p-6">
