@@ -88,12 +88,16 @@ const SeoulMap = ({
   const [tooltip, setTooltip] = useState<{ x: number; y: number; district: District } | null>(null);
 
   const handleMouseMove = (e: React.MouseEvent, district: District) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setTooltip({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-      district
-    });
+    // SVG 컨테이너를 기준으로 한 좌표 계산
+    const svgElement = e.currentTarget.closest('svg');
+    if (svgElement) {
+      const rect = svgElement.getBoundingClientRect();
+      setTooltip({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+        district
+      });
+    }
   };
 
   const handleMouseEnter = (district: District) => {
@@ -166,9 +170,9 @@ const SeoulMap = ({
         <div 
           className="absolute z-20 bg-gray-900 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none min-w-[200px]"
           style={{ 
-            left: tooltip.x + 15, 
-            top: tooltip.y - 60,
-            transform: tooltip.x > 300 ? 'translateX(-100%)' : 'none' // 화면 끝에서는 왼쪽으로
+            left: tooltip.x + 10, 
+            top: tooltip.y - 70,
+            transform: tooltip.x > 600 ? 'translateX(-100%)' : 'none' // SVG 컨테이너 내에서 우측 끝 처리
           }}
         >
           <div className="font-semibold text-sm mb-1">{tooltip.district.name}</div>
@@ -183,7 +187,7 @@ const SeoulMap = ({
             className="absolute w-2 h-2 bg-gray-900 rotate-45"
             style={{
               bottom: '-4px',
-              left: tooltip.x > 300 ? 'calc(100% - 20px)' : '20px'
+              left: tooltip.x > 600 ? 'calc(100% - 20px)' : '20px'
             }}
           />
         </div>
