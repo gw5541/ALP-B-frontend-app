@@ -139,7 +139,7 @@ const Pyramid = ({
       <ResponsiveContainer width="100%" height={height}>
         <BarChart 
           data={chartData}
-          margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
+          margin={{ top: 5, right: 30, left: 10, bottom: 15 }}
         >
           <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
           
@@ -148,7 +148,7 @@ const Pyramid = ({
             dataKey="ageGroup" 
             angle={-45} 
             textAnchor="end" 
-            height={80}
+            height={40}
             interval={0}
             tick={{ fontSize: 11 }}
             axisLine={{ stroke: '#e5e7eb' }}

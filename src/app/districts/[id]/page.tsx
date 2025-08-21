@@ -618,11 +618,11 @@ const DistrictDetailPage = () => {
     }
   };
 
+  // 1. 탭 설정 변경
   const tabs = [
     { id: 'daily' as TabType, label: '일간', description: '시간대별 인구 현황' },
     { id: 'weekly' as TabType, label: '주간', description: '요일별 인구 현황' },
-    { id: 'monthly' as TabType, label: '월간', description: '월별 인구 현황' }
-    // { id: 'age' as TabType, label: '연령', description: '연령대별 인구 분포' } // 🔧 삭제
+    { id: 'monthly' as TabType, label: '월간', description: '주차별 인구 현황' }
   ];
 
   // 🔧 추가: 백엔드 데이터를 차트용 데이터로 변환하는 함수
@@ -814,8 +814,9 @@ const DistrictDetailPage = () => {
           return (
           <MonthlyLine 
               data={convertedData}
-            title="월별 인구 현황"
+            title="주차별 인구 현황"
               height={350}
+              color="#ef4444"
             />
           );
         } else {
@@ -893,6 +894,20 @@ const DistrictDetailPage = () => {
       baseDate: date,
       baseDayOfWeek: dayOfWeek
     };
+  };
+
+  // 🔧 추가: 연령 분포 차트 제목을 탭에 따라 동적으로 변경하는 함수
+  const getAgeDistributionTitle = () => {
+    switch (activeTab) {
+      case 'daily':
+        return '일간 평균 연령대별 인구 분포';
+      case 'weekly':
+        return '주간 평균 연령대별 인구 분포';
+      case 'monthly':
+        return '월간 평균 연령대별 인구 분포';
+      default:
+        return '연령대별 인구 분포';
+    }
   };
 
   return (
@@ -1020,8 +1035,7 @@ const DistrictDetailPage = () => {
 
             {/* 상단 우측: 연령대별 인구 분포 */}
             <div>
-              <Card title="연령대별 인구 분포">
-                {/* 🔧 수정: 조건 검사를 변수로 분리 */}
+              <Card title={getAgeDistributionTitle()}>
                 {(() => {
                   const hasValidAgeData = ageDistribution && 
                     ageDistribution.ageDistribution && 
@@ -1042,21 +1056,16 @@ const DistrictDetailPage = () => {
 
                   if (hasValidAgeData) {
                     console.log('🎯 About to render Pyramid with data:', ageDistribution.ageDistribution);
-                    return <Pyramid data={ageDistribution.ageDistribution} height={350} />;
+                    return <Pyramid data={ageDistribution.ageDistribution} height={420} />;
                   } else if (loading) {
                     console.log('🔄 Showing loading spinner for age data');
                     return <LoadingSpinner size="lg" message="연령대별 데이터 로딩 중..." />;
                   } else {
                     console.log('❌ Showing no data message for age data');
                     return (
-                  <div className="h-64 flex items-center justify-center text-gray-500">
+                  <div className="h-96 flex items-center justify-center text-gray-500">
                         <div className="text-center">
                           <p>연령대별 데이터가 없습니다</p>
-                          <p className="text-xs mt-1">
-                            Debug: hasAge={String(!!ageDistribution)}, 
-                            hasArray={String(!!ageDistribution?.ageDistribution)}, 
-                            length={ageDistribution?.ageDistribution?.length || 0}
-                          </p>
                         </div>
                   </div>
                     );
