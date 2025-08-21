@@ -125,21 +125,6 @@ const DashboardContent = () => {
           <p className="text-gray-600">서울시 자치구별 생활인구 현황을 확인하세요</p>
         </div>
 
-        {/* 🔧 추가: 디버깅 정보 표시 (개발용) */}
-        {process.env.NODE_ENV === 'development' && hoveredDistrict && (
-          <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <h4 className="font-semibold text-yellow-800 mb-2">🔍 디버깅 정보</h4>
-            <div className="text-sm text-yellow-700 space-y-1">
-              <p><strong>현재 자치구:</strong> {currentDistrict?.name} (ID: {hoveredDistrict})</p>
-              <p><strong>요청 날짜:</strong> {getTenDaysAgo()} (10일 전)</p>
-              <p><strong>월 평균 인구:</strong> {weeklyAverage !== null ? formatPopulation(weeklyAverage) : 'N/A'}명</p>
-              <p><strong>시간별 데이터:</strong> {hourlyData?.currentData?.length || 0}개</p>
-              <p><strong>로딩 상태:</strong> {loading ? '로딩 중' : '완료'}</p>
-              {error && <p><strong>에러:</strong> {error}</p>}
-            </div>
-          </div>
-        )}
-
         {/* 관심 지역 3개 드롭다운 */}
         <div className="mb-8">
           <Card title="관심 지역 설정 (최대 3개)">
@@ -198,7 +183,7 @@ const DashboardContent = () => {
                     {/* 🔧 수정: SVG 아이콘을 더 간단한 형태로 변경 */}
                     <div className="mx-auto h-12 w-12 text-gray-400 mb-4 flex items-center justify-center">
                       <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                       </svg>
                     </div>
                     <p className="text-sm">

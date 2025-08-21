@@ -115,8 +115,12 @@ export const getErrorMessage = (error: unknown): string => {
 
 // Local storage utilities
 export const getStoredUserId = (): string => {
-  if (typeof window === 'undefined') return 'demo-user';
-  return localStorage.getItem('userId') || 'demo-user';
+  // 🔧 테스트용: user_id 1번 고정 (로그인 기능 구현 전까지)
+  return '1';
+  
+  // 원래 코드 (로그인 기능 구현 후 사용)
+  // if (typeof window === 'undefined') return 'demo-user';
+  // return localStorage.getItem('userId') || 'demo-user';
 };
 
 export const setStoredUserId = (userId: string): void => {
