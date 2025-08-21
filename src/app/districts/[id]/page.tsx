@@ -39,8 +39,8 @@ import {
   formatPopulation, 
   parseSearchParams, 
   buildSearchParams, 
-  getStoredUserId
-  // 🔧 제거: formatWeekday, formatMonthDay (정의되지 않은 함수들)
+  getStoredUserId,
+  convertDbCodeToInternalId // 🔧 추가
 } from '@/lib/utils';
 import { DISTRICTS } from '@/components/common/SeoulMap'; // 🔧 추가
 
@@ -48,7 +48,25 @@ const DistrictDetailPage = () => {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter(); // 추가
-  const districtId = parseInt(params.id as string);
+  
+  // URL 파라미터 형식 판별 및 내부 ID로 변환
+  const getInternalDistrictId = (param: number): number => {
+    if (param >= 11000) {
+      // DB 코드 형식 (11xxx)
+      const internalId = convertDbCodeToInternalId(param);
+      if (!internalId) {
+        throw new Error(`Invalid district code: ${param}`);
+      }
+      return internalId;
+    } else if (param >= 1 && param <= 25) {
+      // 내부 ID 형식 (1-25)
+      return param;
+    } else {
+      throw new Error(`Invalid district parameter: ${param}`);
+    }
+  };
+  
+  const districtId = getInternalDistrictId(parseInt(params.id as string));
   
   const [activeTab, setActiveTab] = useState<TabType>('daily');
   const [district, setDistrict] = useState<District | null>(null);

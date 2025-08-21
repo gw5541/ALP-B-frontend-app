@@ -152,11 +152,7 @@ const DashboardContent = () => {
 
           {/* Hourly Chart */}
           <div>
-            <Card title={
-              currentDistrict 
-                ? `${currentDistrict.name} 일간 평균 인구 시간대별 변화` 
-                : '시간대별 인구 변화'
-            }>
+            <Card>
               {loading ? (
                 <SkeletonChart />
               ) : error ? (

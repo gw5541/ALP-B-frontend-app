@@ -24,7 +24,8 @@ import {
   getLastMonth, 
   getErrorMessage, 
   parseSearchParams,
-  getStoredUserId  // 🔧 추가
+  getStoredUserId,  // 🔧 추가
+  convertDbCodeToInternalId // 🔧 추가
 } from '@/lib/utils';
 import { DISTRICTS } from '@/components/common/SeoulMap';
 
@@ -99,21 +100,7 @@ const ReportsSummaryContent = () => {
       
       // 🔧 수정: 백엔드에서 온 districtId를 내부 ID로 변환
       const favoriteIds = favorites.map(fav => {
-        // DB 코드 (11xxx)를 내부 ID (1-25)로 변환
-        const district = DISTRICTS.find(d => {
-          // DISTRICTS 배열에서 매칭되는 DB 코드 찾기 (메모리 매핑 사용)
-          const DISTRICT_CODE_MAP: Record<number, string> = {
-            1: '11680', 2: '11740', 3: '11305', 4: '11500', 5: '11620',
-            6: '11215', 7: '11530', 8: '11545', 9: '11350', 10: '11320',
-            11: '11230', 12: '11590', 13: '11440', 14: '11410', 15: '11650',
-            16: '11200', 17: '11290', 18: '11710', 19: '11470', 20: '11560',
-            21: '11170', 22: '11380', 23: '11110', 24: '11140', 25: '11260'
-          };
-          
-          return DISTRICT_CODE_MAP[d.id] === fav.districtId.toString();
-        });
-        
-        return district ? district.id : null;
+        return convertDbCodeToInternalId(fav.districtId);
       }).filter((id): id is number => id !== null);
       
       // 3개 슬롯에 맞게 변환 (부족한 부분은 null로 채우기)
