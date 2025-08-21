@@ -36,6 +36,8 @@ const DashboardContent = () => {
     } else {
       setHourlyData(null);
       setWeeklyAverage(null);
+      setLoading(false);
+      setError(null);
     }
   }, [hoveredDistrict]);
 
@@ -167,9 +169,10 @@ const DashboardContent = () => {
                     </button>
                   </div>
                 </div>
-              ) : hourlyData && hourlyData.currentData && hourlyData.currentData.length > 0 ? (
+              ) : hourlyData && hourlyData.currentData && hourlyData.currentData.length > 0 && hoveredDistrict ? (
                 <HourlyLine 
                   series={hourlyData.currentData}
+                  title={`${currentDistrict?.name || '자치구'} 시간대별 인구 현황`}
                   height={350}
                   color="#ef4444"
                 />
