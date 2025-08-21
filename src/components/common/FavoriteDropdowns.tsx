@@ -209,13 +209,6 @@ const FavoriteDropdowns = ({ onFavoriteChange, className = '' }: FavoriteDropdow
           </div>
         </div>
       )}
-
-      {/* 🔧 수정: 개발 환경에서 백엔드 연결 상태 표시 */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="mt-2 text-xs text-gray-500">
-          🔗 백엔드 API 연동 활성화 | 테스트 사용자: {getStoredUserId()}
-        </div>
-      )}
     </div>
   );
 };

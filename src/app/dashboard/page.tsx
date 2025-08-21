@@ -175,7 +175,7 @@ const DashboardContent = () => {
                 <HourlyLine 
                   series={hourlyData.currentData}
                   height={350}
-                  color="#3b82f6"
+                  color="#ef4444"
                 />
               ) : (
                 <div className="h-64 flex items-center justify-center text-gray-500">
