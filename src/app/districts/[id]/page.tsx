@@ -511,14 +511,17 @@ const DistrictDetailPage = () => {
         )[0];
         
         setCurrentNote(latestNote);
-        setMemo(latestNote.content);
+        // 분석 메모 작성 카드는 항상 빈 상태로 유지 (기존 메모 표시하지 않음)
+        // setMemo(latestNote.content); 
         setMemoDate(new Date(latestNote.createdAt).toLocaleDateString('ko-KR'));
       } else {
-    const savedMemo = localStorage.getItem(`district-memo-${districtId}`);
-    const savedDate = localStorage.getItem(`district-memo-date-${districtId}`);
-    
-    if (savedMemo) {
-      setMemo(savedMemo);
+        // localStorage에서 기존 메모가 있으면 마이그레이션만 수행
+        const savedMemo = localStorage.getItem(`district-memo-${districtId}`);
+        const savedDate = localStorage.getItem(`district-memo-date-${districtId}`);
+        
+        if (savedMemo) {
+          // 텍스트 영역에는 표시하지 않고 마이그레이션만 수행
+          // setMemo(savedMemo);
           if (savedDate) {
             setMemoDate(savedDate);
           }
@@ -534,9 +537,10 @@ const DistrictDetailPage = () => {
       const savedDate = localStorage.getItem(`district-memo-date-${districtId}`);
       
       if (savedMemo) {
-        setMemo(savedMemo);
-    if (savedDate) {
-      setMemoDate(savedDate);
+        // 에러 발생 시에도 텍스트 영역에는 표시하지 않음
+        // setMemo(savedMemo);
+        if (savedDate) {
+          setMemoDate(savedDate);
         }
       }
     } finally {
@@ -570,21 +574,14 @@ const DistrictDetailPage = () => {
       const userId = getStoredUserId();
       
       if (memo.trim()) {
-        let savedNote: NoteDto;
+        // 항상 새로운 메모를 생성 (기존 메모 수정하지 않음)
+        const savedNote = await apiClient.createNote(userId, {
+          districtId,
+          content: memo.trim()
+        });
         
-        if (currentNote) {
-          savedNote = await apiClient.updateNote(userId, currentNote.noteId, {
-            content: memo.trim()
-          });
-        } else {
-          savedNote = await apiClient.createNote(userId, {
-            districtId,
-            content: memo.trim()
-          });
-        }
-        
-        setCurrentNote(savedNote);
-        setMemoDate(new Date(savedNote.createdAt).toLocaleDateString('ko-KR'));
+        // 메모 작성 후 텍스트 영역 비우기
+        setMemo('');
         setMemoSaved(true);
         
         // 메모 목록도 업데이트
@@ -1251,9 +1248,9 @@ const DistrictDetailPage = () => {
               </Card>
             </div>
 
-            {/* 하단 좌측: 분석 메모 */}
+            {/* 하단 좌측: 분석 메모 작성 */}
             <div>
-              <Card title="분석 메모">
+              <Card title="분석 메모 작성">
                 <div className="space-y-4">
                   {/* 메모 관련 에러 */}
                   {apiErrors.memo && (
@@ -1269,44 +1266,7 @@ const DistrictDetailPage = () => {
                     </div>
                   )}
 
-                  {/* 이전 메모 표시 */}
-                  {memo && (
-                    <div className="bg-gray-50 p-3 rounded-md border">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-gray-700">
-                          {currentNote ? '서버에 저장된 메모' : '로컬에 저장된 메모'}
-                        </span>
-                        <div className="flex items-center space-x-2">
-                        <span className="text-xs text-gray-500">
-                          {memoDate || new Date().toLocaleDateString('ko-KR')}
-                        </span>
-                          {currentNote && (
-                            <button
-                              onClick={deleteMemo}
-                              disabled={memoLoading}
-                              className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
-                            >
-                              삭제
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-                        {memo.length > 150 ? `${memo.substring(0, 150)}...` : memo}
-                      </p>
-                      {memo.length > 150 && (
-                        <button 
-                          onClick={() => {
-                            const element = document.getElementById('memo-textarea');
-                            element?.focus();
-                          }}
-                          className="text-xs text-blue-600 hover:text-blue-700 mt-2"
-                        >
-                          전체 보기/수정
-                        </button>
-                      )}
-                    </div>
-                  )}
+
 
                   <textarea
                     id="memo-textarea"
