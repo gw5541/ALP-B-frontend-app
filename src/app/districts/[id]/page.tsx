@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation'; // useRouter 추가
 import Header from '@/components/common/Header';
 import Card from '@/components/common/Card';
 import FilterBar from '@/components/common/FilterBar';
@@ -10,35 +10,64 @@ import MonthlyLine from '@/components/charts/MonthlyLine';
 import Pyramid from '@/components/charts/Pyramid';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { SkeletonChart } from '@/components/common/Skeleton';
+import ErrorMessage from '@/components/common/ErrorMessage'; // 추가
+import LoadingSpinner from '@/components/common/LoadingSpinner'; // 추가
 import { 
-  PopulationTrend, 
-  MonthlyPopulation, 
-  AgeDistribution, 
-  PopulationStats,
+  HourlyTrendDto,
+  MonthlyTrendDto,
+  PopulationAggDto,
+  AgeDistributionDto,
   PopulationHighlights,
   District,
-  TabType 
+  TabType,
+  NoteDto,
+  NoteCreateRequest,
+  NoteUpdateRequest,
+  FilterParams
 } from '@/lib/types';
 import { apiClient } from '@/lib/apiClient';
-import { getToday, getLastMonth, getErrorMessage, formatPopulation, parseSearchParams } from '@/lib/utils';
+import { 
+  getToday, 
+  getLastMonth, 
+  getErrorMessage, 
+  formatPopulation, 
+  parseSearchParams, 
+  buildSearchParams, // 추가
+  getStoredUserId,
+  getGenderLabel, // 추가
+  getAgeBucketLabel // 추가
+} from '@/lib/utils';
 
 const DistrictDetailPage = () => {
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter(); // 추가
   const districtId = parseInt(params.id as string);
   
   const [activeTab, setActiveTab] = useState<TabType>('daily');
   const [district, setDistrict] = useState<District | null>(null);
-  const [hourlyData, setHourlyData] = useState<PopulationTrend | null>(null);
-  const [weeklyData, setWeeklyData] = useState<PopulationStats[]>([]);
-  const [monthlyData, setMonthlyData] = useState<MonthlyPopulation[]>([]);
-  const [ageDistribution, setAgeDistribution] = useState<AgeDistribution[]>([]);
+  const [hourlyData, setHourlyData] = useState<HourlyTrendDto | null>(null);
+  const [weeklyData, setWeeklyData] = useState<PopulationAggDto[]>([]);
+  const [monthlyData, setMonthlyData] = useState<MonthlyTrendDto | null>(null);
+  const [ageDistribution, setAgeDistribution] = useState<AgeDistributionDto | null>(null);
   const [highlights, setHighlights] = useState<PopulationHighlights | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // 메모 관련 state들
   const [memo, setMemo] = useState<string>('');
   const [memoSaved, setMemoSaved] = useState<boolean>(false);
   const [memoDate, setMemoDate] = useState<string>('');
+  const [memoLoading, setMemoLoading] = useState<boolean>(false);
+  const [memoError, setMemoError] = useState<string | null>(null);
+  const [currentNote, setCurrentNote] = useState<NoteDto | null>(null);
+
+  // 에러 처리 개선
+  const [apiErrors, setApiErrors] = useState<{
+    district?: string;
+    tabData?: string;
+    memo?: string;
+  }>({});
 
   const filters = parseSearchParams(searchParams);
 
@@ -53,14 +82,17 @@ const DistrictDetailPage = () => {
 
   const loadDistrictInfo = async () => {
     try {
+      setApiErrors(prev => ({ ...prev, district: undefined }));
+      
       const districts = await apiClient.getDistricts();
       const currentDistrict = districts.find(d => d.id === districtId);
       setDistrict(currentDistrict || { id: districtId, name: `자치구 ${districtId}` });
 
-      // Load highlights
       const highlightsData = await apiClient.getPopulationHighlights(districtId);
       setHighlights(highlightsData[0] || null);
     } catch (err) {
+      const errorMessage = getErrorMessage(err);
+      setApiErrors(prev => ({ ...prev, district: errorMessage }));
       console.error('Failed to load district info:', err);
     }
   };
@@ -68,7 +100,7 @@ const DistrictDetailPage = () => {
   const loadTabData = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setApiErrors(prev => ({ ...prev, tabData: undefined }));
 
       const apiParams = {
         districtId,
@@ -89,7 +121,12 @@ const DistrictDetailPage = () => {
         });
         setWeeklyData(weeklyResponse);
       } else if (activeTab === 'monthly') {
-        const monthlyResponse = await apiClient.getMonthlyTrends(apiParams);
+        const monthlyResponse = await apiClient.getMonthlyTrends({
+          districtId: apiParams.districtId,
+          months: 12,
+          gender: apiParams.gender,
+          ageBucket: apiParams.ageBucket
+        });
         setMonthlyData(monthlyResponse);
       }
 
@@ -102,42 +139,150 @@ const DistrictDetailPage = () => {
       setAgeDistribution(ageResponse);
 
     } catch (err) {
-      setError(getErrorMessage(err));
+      const errorMessage = getErrorMessage(err);
+      setApiErrors(prev => ({ ...prev, tabData: errorMessage }));
       console.error('Failed to load tab data:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const loadMemo = () => {
-    // localStorage에서 메모와 날짜 불러오기
-    const savedMemo = localStorage.getItem(`district-memo-${districtId}`);
-    const savedDate = localStorage.getItem(`district-memo-date-${districtId}`);
-    
-    if (savedMemo) {
-      setMemo(savedMemo);
-    }
-    if (savedDate) {
-      setMemoDate(savedDate);
+  const loadMemo = async () => {
+    try {
+      setMemoLoading(true);
+      setApiErrors(prev => ({ ...prev, memo: undefined }));
+      
+      const userId = getStoredUserId();
+      const notes = await apiClient.getUserNotes(userId, districtId);
+      
+      if (notes.length > 0) {
+        const latestNote = notes.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )[0];
+        
+        setCurrentNote(latestNote);
+        setMemo(latestNote.content);
+        setMemoDate(new Date(latestNote.createdAt).toLocaleDateString('ko-KR'));
+      } else {
+        const savedMemo = localStorage.getItem(`district-memo-${districtId}`);
+        const savedDate = localStorage.getItem(`district-memo-date-${districtId}`);
+        
+        if (savedMemo) {
+          setMemo(savedMemo);
+          if (savedDate) {
+            setMemoDate(savedDate);
+          }
+          await migrateLocalStorageMemo(savedMemo);
+        }
+      }
+    } catch (err) {
+      const errorMessage = getErrorMessage(err);
+      setApiErrors(prev => ({ ...prev, memo: errorMessage }));
+      console.error('Failed to load memo:', err);
+      
+      const savedMemo = localStorage.getItem(`district-memo-${districtId}`);
+      const savedDate = localStorage.getItem(`district-memo-date-${districtId}`);
+      
+      if (savedMemo) {
+        setMemo(savedMemo);
+        if (savedDate) {
+          setMemoDate(savedDate);
+        }
+      }
+    } finally {
+      setMemoLoading(false);
     }
   };
 
-  const saveMemo = () => {
-    // localStorage에 메모와 현재 날짜 저장
-    const currentDate = new Date().toLocaleDateString('ko-KR');
-    localStorage.setItem(`district-memo-${districtId}`, memo);
-    localStorage.setItem(`district-memo-date-${districtId}`, currentDate);
-    setMemoDate(currentDate);
-    setMemoSaved(true);
+  const migrateLocalStorageMemo = async (content: string) => {
+    try {
+      const userId = getStoredUserId();
+      const newNote = await apiClient.createNote(userId, {
+        districtId,
+        content
+      });
+      
+      setCurrentNote(newNote);
+      setMemoDate(new Date(newNote.createdAt).toLocaleDateString('ko-KR'));
+      
+      localStorage.removeItem(`district-memo-${districtId}`);
+      localStorage.removeItem(`district-memo-date-${districtId}`);
+    } catch (err) {
+      console.error('Failed to migrate memo:', err);
+    }
+  };
+
+  const saveMemo = async () => {
+    try {
+      setMemoLoading(true);
+      setApiErrors(prev => ({ ...prev, memo: undefined }));
+      
+      const userId = getStoredUserId();
+      
+      if (memo.trim()) {
+        let savedNote: NoteDto;
+        
+        if (currentNote) {
+          savedNote = await apiClient.updateNote(userId, currentNote.noteId, {
+            content: memo.trim()
+          });
+        } else {
+          savedNote = await apiClient.createNote(userId, {
+            districtId,
+            content: memo.trim()
+          });
+        }
+        
+        setCurrentNote(savedNote);
+        setMemoDate(new Date(savedNote.createdAt).toLocaleDateString('ko-KR'));
+        setMemoSaved(true);
+        
+        setTimeout(() => {
+          setMemoSaved(false);
+        }, 3000);
+      }
+    } catch (err) {
+      const errorMessage = getErrorMessage(err);
+      setApiErrors(prev => ({ ...prev, memo: errorMessage }));
+      console.error('Failed to save memo:', err);
+      
+      const currentDate = new Date().toLocaleDateString('ko-KR');
+      localStorage.setItem(`district-memo-${districtId}`, memo);
+      localStorage.setItem(`district-memo-date-${districtId}`, currentDate);
+      setMemoDate(currentDate);
+      setMemoSaved(true);
+      
+      setTimeout(() => {
+        setMemoSaved(false);
+      }, 3000);
+    } finally {
+      setMemoLoading(false);
+    }
+  };
+
+  const deleteMemo = async () => {
+    if (!currentNote) return;
     
-    // 3초 후 저장 표시 제거
-    setTimeout(() => {
-      setMemoSaved(false);
-    }, 3000);
+    try {
+      setMemoLoading(true);
+      setApiErrors(prev => ({ ...prev, memo: undefined }));
+      
+      const userId = getStoredUserId();
+      await apiClient.deleteNote(userId, currentNote.noteId);
+      
+      setCurrentNote(null);
+      setMemo('');
+      setMemoDate('');
+    } catch (err) {
+      const errorMessage = getErrorMessage(err);
+      setApiErrors(prev => ({ ...prev, memo: errorMessage }));
+      console.error('Failed to delete memo:', err);
+    } finally {
+      setMemoLoading(false);
+    }
   };
 
   const handleMemoChange = (value: string) => {
-    // 500자 제한
     if (value.length <= 500) {
       setMemo(value);
       setMemoSaved(false);
@@ -152,14 +297,16 @@ const DistrictDetailPage = () => {
 
   const renderTabContent = () => {
     if (loading) {
-      return <SkeletonChart />;
+      return <LoadingSpinner size="lg" message="데이터를 불러오는 중..." />;
     }
 
-    if (error) {
+    if (apiErrors.tabData) {
       return (
-        <div className="h-64 flex items-center justify-center text-red-600">
-          {error}
-        </div>
+        <ErrorMessage 
+          error={apiErrors.tabData}
+          onRetry={() => loadTabData()}
+          className="h-64 flex items-center justify-center"
+        />
       );
     }
 
@@ -178,10 +325,9 @@ const DistrictDetailPage = () => {
         );
 
       case 'weekly':
-        // Convert weekly stats to chart format
         const weeklyChartData = weeklyData.map((stat, index) => ({
           hour: index,
-          value: stat.total
+          value: stat.totalAvg
         }));
         
         return weeklyChartData.length > 0 ? (
@@ -197,9 +343,10 @@ const DistrictDetailPage = () => {
         );
 
       case 'monthly':
-        return monthlyData.length > 0 ? (
+        // 에러 1, 2 수정: null 체크 강화
+        return monthlyData && monthlyData.monthlyData && monthlyData.monthlyData.length > 0 ? (
           <MonthlyLine 
-            data={monthlyData}
+            data={monthlyData.monthlyData}
             title="월별 인구 현황"
             height={350}
           />
@@ -214,12 +361,24 @@ const DistrictDetailPage = () => {
     }
   };
 
+  // 에러 3, 4, 5, 6 수정: 불필요한 함수들 제거 (FilterBar에서 처리)
+  // updateFilter와 applyFilters 함수들을 제거
+
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-gray-50">
         <Header />
         
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* 자치구 정보 로딩 에러 */}
+          {apiErrors.district && (
+            <ErrorMessage 
+              error={apiErrors.district}
+              onRetry={loadDistrictInfo}
+              className="mb-6"
+            />
+          )}
+
           {/* Header Section */}
           <div className="mb-8">
             <div className="flex items-center space-x-4 mb-4">
@@ -278,6 +437,7 @@ const DistrictDetailPage = () => {
               showGenderFilter={true}
               showAgeBucketFilter={true}
               showDateFilter={activeTab === 'daily'}
+              showPresetManager={true}
               className="mb-4"
             />
           </div>
@@ -306,7 +466,7 @@ const DistrictDetailPage = () => {
             </div>
           </div>
 
-          {/* Main Content Grid - 2x2 Layout */}
+          {/* Main Content Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* 상단 좌측: 인구 현황 */}
             <div>
@@ -318,8 +478,11 @@ const DistrictDetailPage = () => {
             {/* 상단 우측: 연령대별 인구 분포 */}
             <div>
               <Card title="연령대별 인구 분포">
-                {ageDistribution.length > 0 ? (
-                  <Pyramid data={ageDistribution} height={350} />
+                {/* 에러 7, 8 수정: null 체크 강화 */}
+                {ageDistribution && ageDistribution.ageDistribution && ageDistribution.ageDistribution.length > 0 ? (
+                  <Pyramid data={ageDistribution.ageDistribution} height={350} />
+                ) : loading ? (
+                  <LoadingSpinner size="lg" message="연령대별 데이터 로딩 중..." />
                 ) : (
                   <div className="h-64 flex items-center justify-center text-gray-500">
                     {loading ? '데이터를 불러오는 중...' : '데이터가 없습니다'}
@@ -332,14 +495,41 @@ const DistrictDetailPage = () => {
             <div>
               <Card title="분석 메모">
                 <div className="space-y-4">
+                  {/* 메모 관련 에러 */}
+                  {apiErrors.memo && (
+                    <ErrorMessage 
+                      error={apiErrors.memo}
+                      onRetry={loadMemo}
+                    />
+                  )}
+
+                  {memoLoading && (
+                    <div className="flex items-center justify-center p-4">
+                      <LoadingSpinner size="sm" message="메모를 불러오는 중..." />
+                    </div>
+                  )}
+
                   {/* 이전 메모 표시 */}
                   {memo && (
                     <div className="bg-gray-50 p-3 rounded-md border">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-gray-700">저장된 메모</span>
-                        <span className="text-xs text-gray-500">
-                          {memoDate || new Date().toLocaleDateString('ko-KR')}
+                        <span className="text-xs font-medium text-gray-700">
+                          {currentNote ? '서버에 저장된 메모' : '로컬에 저장된 메모'}
                         </span>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xs text-gray-500">
+                            {memoDate || new Date().toLocaleDateString('ko-KR')}
+                          </span>
+                          {currentNote && (
+                            <button
+                              onClick={deleteMemo}
+                              disabled={memoLoading}
+                              className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                            >
+                              삭제
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
                         {memo.length > 150 ? `${memo.substring(0, 150)}...` : memo}
@@ -362,8 +552,9 @@ const DistrictDetailPage = () => {
                     id="memo-textarea"
                     value={memo}
                     onChange={(e) => handleMemoChange(e.target.value)}
+                    disabled={memoLoading}
                     placeholder="이 자치구에 대한 분석 내용이나 특이사항을 메모해보세요..."
-                    className="w-full h-32 p-3 border border-gray-300 rounded-md resize-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm"
+                    className="w-full h-32 p-3 border border-gray-300 rounded-md resize-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm disabled:opacity-50 disabled:bg-gray-100"
                   />
                   
                   <div className="flex items-center justify-between">
@@ -383,15 +574,17 @@ const DistrictDetailPage = () => {
                       
                       <button
                         onClick={saveMemo}
-                        className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
+                        disabled={memoLoading || !memo.trim()}
+                        className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        저장
+                        {memoLoading ? '저장 중...' : '저장'}
                       </button>
                     </div>
                   </div>
                   
                   <div className="text-xs text-gray-400 border-t pt-2">
-                    💡 메모는 브라우저에 자동 저장되며, 각 자치구별로 개별 관리됩니다.
+                    💡 메모는 서버에 안전하게 저장되며, 어디서든 접근할 수 있습니다.
+                    {apiErrors.memo && ' (현재 오류로 인해 로컬에 임시 저장됩니다.)'}
                   </div>
                 </div>
               </Card>

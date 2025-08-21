@@ -11,9 +11,10 @@ import Pyramid from '@/components/charts/Pyramid';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { SkeletonChart, SkeletonTable } from '@/components/common/Skeleton';
 import { 
-  PopulationStats, 
-  AgeDistribution, 
-  PopulationTrend,
+  // 새로운 타입들 import
+  PopulationAggDto,
+  AgeDistributionDto,
+  HourlyTrendDto,
   District 
 } from '@/lib/types';
 import { apiClient } from '@/lib/apiClient';
@@ -28,11 +29,12 @@ const ReportsSummaryPage = () => {
   const searchParams = useSearchParams();
   const [districts, setDistricts] = useState<District[]>([]);
   const [favoriteDistricts, setFavoriteDistricts] = useState<(number | null)[]>([null, null, null]);
-  const [monthlyStats, setMonthlyStats] = useState<PopulationStats[]>([]);
+  // 새로운 타입 사용
+  const [monthlyStats, setMonthlyStats] = useState<PopulationAggDto[]>([]);
   const [chartMode, setChartMode] = useState<ChartMode>('hourly');
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('daily');
-  const [hourlyData, setHourlyData] = useState<PopulationTrend[]>([]);
-  const [ageDistribution, setAgeDistribution] = useState<AgeDistribution[]>([]);
+  const [hourlyData, setHourlyData] = useState<HourlyTrendDto[]>([]);
+  const [ageDistribution, setAgeDistribution] = useState<AgeDistributionDto | null>(null);
   const [loading, setLoading] = useState(false);
   const [chartLoading, setChartLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +86,7 @@ const ReportsSummaryPage = () => {
         ageBucket: filters.ageBucket
       };
 
+      // 새로운 API 사용
       const stats = await apiClient.getPopulationStats(params);
       setMonthlyStats(stats);
     } catch (err) {
@@ -109,12 +112,13 @@ const ReportsSummaryPage = () => {
         };
 
         if (districtId) {
+          // 새로운 API 사용
           const hourlyResponse = await apiClient.getHourlyTrends(params);
           setHourlyData([hourlyResponse]);
         } else {
           // Load for top 5 districts by population
           const topDistricts = monthlyStats
-            .sort((a, b) => b.total - a.total)
+            .sort((a, b) => b.totalAvg - a.totalAvg)  // 새로운 필드명 사용
             .slice(0, 5);
           
           const hourlyPromises = topDistricts.map(district =>
@@ -132,6 +136,7 @@ const ReportsSummaryPage = () => {
           to: filters.to || getToday()
         };
 
+        // 새로운 API 사용
         const ageResponse = await apiClient.getAgeDistribution(params);
         setAgeDistribution(ageResponse);
       }
@@ -178,7 +183,7 @@ const ReportsSummaryPage = () => {
     }
 
     if (chartMode === 'pyramid') {
-      if (ageDistribution.length === 0) {
+      if (!ageDistribution?.ageDistribution?.length) {
         return (
           <div className="h-64 flex items-center justify-center text-gray-500">
             연령대별 데이터가 없습니다
@@ -188,7 +193,7 @@ const ReportsSummaryPage = () => {
 
       return (
         <Pyramid 
-          data={ageDistribution}
+          data={ageDistribution.ageDistribution}
           title="연령대별 인구 분포"
           height={350}
         />
@@ -246,6 +251,7 @@ const ReportsSummaryPage = () => {
               showGenderFilter={true}
               showAgeBucketFilter={true}
               showDateFilter={chartMode === 'hourly'}
+              showPresetManager={true}  // 프리셋 관리 기능 활성화
               districts={districts}
             />
           </div>
@@ -337,8 +343,6 @@ const ReportsSummaryPage = () => {
               {renderChart()}
             </Card>
           </div>
-
-
 
           {/* Additional Actions */}
           <div className="mb-8">

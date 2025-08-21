@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { UserFavorite } from '@/lib/types';
+// 새로운 타입들 import
+import { FavoriteDto } from '@/lib/types';
 import { apiClient } from '@/lib/apiClient';
 import { getStoredUserId, getErrorMessage } from '@/lib/utils';
 
@@ -12,7 +13,8 @@ interface FavoriteSelectProps {
 }
 
 const FavoriteSelect = ({ value, onChange, className = '' }: FavoriteSelectProps) => {
-  const [favorites, setFavorites] = useState<UserFavorite[]>([]);
+  // 새로운 타입 사용
+  const [favorites, setFavorites] = useState<FavoriteDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,6 +28,7 @@ const FavoriteSelect = ({ value, onChange, className = '' }: FavoriteSelectProps
       setError(null);
       
       const userId = getStoredUserId();
+      // 새로운 API 사용
       const data = await apiClient.getUserFavorites(userId);
       
       // Limit to maximum 3 favorites for UI display
@@ -76,7 +79,7 @@ const FavoriteSelect = ({ value, onChange, className = '' }: FavoriteSelectProps
       >
         <option value="">관심 지역 선택</option>
         {favorites.map((favorite) => (
-          <option key={favorite.districtId} value={favorite.districtId}>
+          <option key={favorite.favoriteId} value={favorite.districtId}>
             {favorite.districtName || `자치구 ${favorite.districtId}`}
           </option>
         ))}

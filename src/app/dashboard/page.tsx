@@ -9,7 +9,8 @@ import SeoulMap, { DISTRICTS } from '@/components/common/SeoulMap';
 import HourlyLine from '@/components/charts/HourlyLine';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { SkeletonChart } from '@/components/common/Skeleton';
-import { PopulationTrend, MonthlyPopulation } from '@/lib/types';
+// 새로운 타입들 import
+import { HourlyTrendDto, MonthlyTrendDto } from '@/lib/types';
 import { apiClient } from '@/lib/apiClient';
 import { getToday, getLastMonth, getErrorMessage, formatPopulation } from '@/lib/utils';
 
@@ -17,7 +18,8 @@ const DashboardPage = () => {
   const searchParams = useSearchParams();
   const [hoveredDistrict, setHoveredDistrict] = useState<number | undefined>();
   const [selectedFavorites, setSelectedFavorites] = useState<(number | null)[]>([null, null, null]);
-  const [hourlyData, setHourlyData] = useState<PopulationTrend | null>(null);
+  // 새로운 타입 사용
+  const [hourlyData, setHourlyData] = useState<HourlyTrendDto | null>(null);
   const [weeklyAverage, setWeeklyAverage] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,24 +46,24 @@ const DashboardPage = () => {
       setLoading(true);
       setError(null);
 
-      // 시간대별 인구 데이터 로드 (일간 평균)
+      // 시간대별 인구 데이터 로드 (일간 평균) - 새로운 API 사용
       const hourlyResponse = await apiClient.getHourlyTrends({
         districtId,
         date: getToday()
       });
 
-      // 주간 평균 계산을 위한 월별 데이터 로드
+      // 주간 평균 계산을 위한 월별 데이터 로드 - 새로운 API 사용
       const monthlyResponse = await apiClient.getMonthlyTrends({
         districtId,
-        from: getLastMonth(),
-        to: getToday()
+        months: 1 // 최근 1개월
       });
 
       setHourlyData(hourlyResponse);
       
-      if (monthlyResponse.length > 0) {
+      // 새로운 응답 구조에 맞게 수정
+      if (monthlyResponse.monthlyData.length > 0) {
         // 최근 한 달 평균 계산
-        const average = monthlyResponse.reduce((sum, item) => sum + item.value, 0) / monthlyResponse.length;
+        const average = monthlyResponse.monthlyData.reduce((sum, item) => sum + item.value, 0) / monthlyResponse.monthlyData.length;
         setWeeklyAverage(average);
       }
     } catch (err) {
