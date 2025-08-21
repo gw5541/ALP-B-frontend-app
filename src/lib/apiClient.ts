@@ -156,6 +156,21 @@ class ApiClient {
     return this.DISTRICT_CODE_MAP[internalId] || null;
   }
 
+  // 🔧 공통 헬퍼 함수 추가
+  private getDistrictCodeForAPI(districtId: number): string {
+    if (districtId >= 11000) {
+      // 이미 DB 코드 형식 (11680, 11350 등)
+      return districtId.toString();
+    } else {
+      // 내부 ID 형식 (1, 2, 3 등)
+      const mappedCode = this.getDistrictCode(districtId);
+      if (!mappedCode) {
+        throw new Error(`Invalid districtId: ${districtId}`);
+      }
+      return mappedCode;
+    }
+  }
+
   // ====== 1. Districts API ======
   async getDistricts(): Promise<District[]> {
     return this.callWithRetry(() => this.client.get('/districts'));
@@ -175,8 +190,8 @@ class ApiClient {
   }): Promise<PageResponse<PopulationRawDto>> {
     const queryParams = new URLSearchParams();
     
-    const districtCode = this.getDistrictCode(params.districtId);
-    if (districtCode) {
+      const districtCode = this.getDistrictCode(params.districtId);
+      if (districtCode) {
       queryParams.append('districtId', districtCode);
     }
     queryParams.append('from', params.from);
@@ -190,7 +205,7 @@ class ApiClient {
     return await this.client.get(`/population/raw?${queryParams.toString()}`);
   }
 
-  // B. 집계 통계 - 에러 2 수정
+  // B. 집계 통계 - 🔧 수정: districtId 처리 개선
   async getPopulationStats(params: {
     period?: PeriodType;
     districtId?: number;
@@ -203,44 +218,51 @@ class ApiClient {
     if (params.period) queryParams.append('period', params.period);
     
     if (params.districtId) {
-      const districtCode = this.getDistrictCode(params.districtId);
-      if (districtCode) {
-        queryParams.append('districtId', districtCode);
+      // 🔧 수정: districtId를 그대로 사용 (DB 코드가 이미 전달되는 경우)
+      let districtCode: string;
+      
+      if (params.districtId >= 11000) {
+        // 이미 DB 코드 형식 (11680, 11350 등)
+        districtCode = params.districtId.toString();
+      } else {
+        // 내부 ID 형식 (1, 2, 3 등)
+        const mappedCode = this.getDistrictCode(params.districtId);
+        if (!mappedCode) {
+          console.error('❌ Invalid districtId:', params.districtId);
+          throw new Error(`Invalid districtId: ${params.districtId}`);
+        }
+        districtCode = mappedCode;
       }
+      
+      queryParams.append('districtId', districtCode);  // 🔧 수정: 중괄호 밖으로 이동
+      console.log('📊 Using districtCode for API:', districtCode);
     }
+    
     if (params.from) queryParams.append('from', params.from);
     if (params.to) queryParams.append('to', params.to);
     if (params.gender && params.gender !== 'all') queryParams.append('gender', params.gender);
     if (params.ageBucket && params.ageBucket !== 'all') queryParams.append('ageBucket', params.ageBucket);
 
+    console.log('📊 Final query URL:', `/population/stats?${queryParams.toString()}`);
     return await this.client.get(`/population/stats?${queryParams.toString()}`);
   }
 
   // C. 시간별 트렌드 (업데이트)
   async getHourlyTrends(params: {
-    districtId?: number;
-    date?: string;
+    districtId: number;
+    date: string;
     gender?: string;
     ageBucket?: AgeBucket | string;
-    compare?: boolean;
+    compare?: string;
   }): Promise<HourlyTrendDto> {
-    return this.callWithRetry(() => {
-      const queryParams = new URLSearchParams();
-      
-      if (params.districtId) {
-        const districtCode = this.getDistrictCode(params.districtId);
-        if (districtCode) {
-          queryParams.append('districtId', districtCode);
-        }
-      }
-      if (params.date) queryParams.append('date', params.date);
-      if (params.gender && params.gender !== 'all') queryParams.append('gender', params.gender);
-      if (params.ageBucket && params.ageBucket !== 'all') queryParams.append('ageBucket', params.ageBucket);
-      if (params.compare) queryParams.append('compare', params.compare.toString());
-
-      // 🔧 백엔드에서 currentData로 반환하므로 그대로 사용
-      return this.client.get(`/population/trends/hourly?${queryParams.toString()}`);
-    });
+    const queryParams = new URLSearchParams();
+    queryParams.append('date', params.date);
+    
+    const districtCode = this.getDistrictCodeForAPI(params.districtId);
+    queryParams.append('districtId', districtCode);
+    
+    // 🔧 백엔드에서 currentData로 반환하므로 그대로 사용
+    return this.client.get(`/population/trends/hourly?${queryParams.toString()}`);
   }
 
   // D. 월별 트렌드 - 에러 3 수정
@@ -354,19 +376,19 @@ class ApiClient {
     try {
       let from: string, to: string, periodType: PeriodType;
 
-      // 🔧 수정: 기간별 날짜 계산 (모두 10일 전 기준으로 통일)
+      // �� 수정: 기간별 날짜 계산 (모두 20일 전 기준으로 통일)
       const baseDate = new Date();
-      baseDate.setDate(baseDate.getDate() - 10); // 10일 전 날짜를 기준으로 설정
+      baseDate.setDate(baseDate.getDate() - 20); // 🔧 수정: 20일 전 날짜를 기준으로 설정
 
       switch (period) {
         case 'DAILY':
-          // 10일 전 날짜 기준
+          // 20일 전 날짜 기준
           from = this.formatDate(baseDate);
           to = this.formatDate(baseDate);
           periodType = 'DAILY';
           break;
         case 'WEEKLY':
-          // 🔧 수정: 10일 전 날짜가 속한 주의 월요일부터 일요일까지
+          // 🔧 수정: 20일 전 날짜가 속한 주의 월요일부터 일요일까지
           const targetDate = new Date(baseDate);
           
           // 해당 주의 월요일 계산 (0=일요일, 1=월요일, ... 6=토요일)
@@ -386,7 +408,7 @@ class ApiClient {
           console.log(`📅 WEEKLY 계산: 기준일=${this.formatDate(targetDate)}, 주간=${from}~${to}`);
           break;
         case 'MONTHLY':
-          // 🔧 수정: 10일 전 날짜가 속한 월의 1일부터 말일까지
+          // 🔧 수정: 20일 전 날짜가 속한 월의 1일부터 말일까지
           const targetMonth = new Date(baseDate);
           const startOfMonth = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), 1);
           const endOfMonth = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0);
@@ -397,6 +419,8 @@ class ApiClient {
           
           console.log(`📅 MONTHLY 계산: 기준일=${this.formatDate(targetMonth)}, 월간=${from}~${to}`);
           break;
+        default:
+          throw new Error(`지원하지 않는 기간: ${period}`);
       }
 
       console.log(`📊 Highlights 계산: period=${period}, from=${from}, to=${to}`);
@@ -550,12 +574,26 @@ class ApiClient {
     gender?: string;
     ageBucket?: string;
   }): Promise<PopulationTrend> {
-    const trendData = await this.getHourlyTrends(params);
+    // 🔧 수정: 필수 파라미터 검증
+    if (!params.districtId) {
+      throw new Error('districtId is required for getHourlyTrendsLegacy');
+    }
+    if (!params.date) {
+      throw new Error('date is required for getHourlyTrendsLegacy');
+    }
+
+    const trendData = await this.getHourlyTrends({
+      districtId: params.districtId, // 이제 타입 안전
+      date: params.date, // 이제 타입 안전
+      gender: params.gender,
+      ageBucket: params.ageBucket
+    });
+    
     return {
       date: trendData.date,
       districtId: trendData.districtId,
       districtName: trendData.districtName,
-      hourlyData: trendData.currentData  // 🔧 수정: currentData 사용
+      hourlyData: trendData.currentData
     };
   }
 
@@ -607,6 +645,28 @@ class ApiClient {
   private formatMonthDay(dateString: string): string {
     const date = new Date(dateString);
     return `${date.getMonth() + 1}월 ${date.getDate()}일`;
+  }
+
+  // 🔧 추가: 안전한 버전의 getHourlyTrends
+  async getHourlyTrendsSafe(params: {
+    districtId?: number;
+    date?: string;
+    gender?: string;
+    ageBucket?: AgeBucket | string;
+    compare?: string;
+  }): Promise<HourlyTrendDto | null> {
+    if (!params.districtId || !params.date) {
+      console.warn('getHourlyTrendsSafe: Missing required parameters', params);
+      return null;
+    }
+
+    return this.getHourlyTrends({
+      districtId: params.districtId,
+      date: params.date,
+      gender: params.gender,
+      ageBucket: params.ageBucket,
+      compare: params.compare
+    });
   }
 }
 

@@ -28,18 +28,20 @@ import {
   MonthlyPopulationBackend,  // 🔧 추가
   AgeDistribution // 🔧 추가
 } from '@/lib/types';
+import { buildAgeDistributionFromBuckets } from '@/lib/charts/pyramid';
 import { apiClient } from '@/lib/apiClient';
 import { 
   getToday, 
-  getTenDaysAgo,  // 🔧 추가
+  getTenDaysAgo,  // 🔧 기존
+  getTwentyDaysAgo,  // 🔧 추가
   getLastMonth, 
   getErrorMessage, 
   formatPopulation, 
   parseSearchParams, 
   buildSearchParams, 
   getStoredUserId,
-  getGenderLabel, 
-  getAgeBucketLabel 
+  formatWeekday,
+  formatMonthDay
 } from '@/lib/utils';
 
 const DistrictDetailPage = () => {
@@ -90,8 +92,22 @@ const DistrictDetailPage = () => {
 
   // 🔧 추가: 탭 데이터 로딩 useEffect 추가 ⭐⭐⭐
   useEffect(() => {
+    console.log('📍 useEffect[loadTabData] 트리거:', {
+      district: !!district,
+      districtId: district?.id,
+      activeTab,
+      filtersDate: filters.date,
+      filtersFrom: filters.from,
+      filtersTo: filters.to,
+      filtersGender: filters.gender,
+      filtersAgeBucket: filters.ageBucket
+    });
+    
     if (district) {
-      loadTabData();
+      console.log('✅ Calling loadTabData...');
+    loadTabData();
+    } else {
+      console.log('❌ No district, skipping loadTabData');
     }
   }, [district, activeTab, filters.date, filters.from, filters.to, filters.gender, filters.ageBucket]);
 
@@ -136,7 +152,24 @@ const DistrictDetailPage = () => {
       
       const districts = await apiClient.getDistricts();
       const currentDistrict = districts.find(d => d.id === districtId);
-      setDistrict(currentDistrict || { id: districtId, name: `자치구 ${districtId}` });
+      
+      // 🔧 수정: 자치구 매핑 사용
+      let districtName = currentDistrict?.name;
+      
+      if (!districtName) {
+        // 🔧 추가: districtId에 따른 자치구 이름 매핑
+        const DISTRICT_NAME_MAP: Record<number, string> = {
+          1: '종로구', 2: '중구', 3: '용산구', 4: '성동구', 5: '광진구',
+          6: '동대문구', 7: '중랑구', 8: '성북구', 9: '강북구', 10: '도봉구',
+          11: '노원구', 12: '은평구', 13: '서대문구', 14: '마포구', 15: '양천구',
+          16: '강서구', 17: '구로구', 18: '금천구', 19: '영등포구', 20: '동작구',
+          21: '관악구', 22: '서초구', 23: '강남구', 24: '송파구', 25: '강동구'
+        };
+        
+        districtName = DISTRICT_NAME_MAP[districtId] || `자치구 ${districtId}`;
+      }
+      
+      setDistrict(currentDistrict || { id: districtId, name: districtName });
 
       // 🔧 제거: 여기서는 highlights 로드하지 않음 (탭별로 로드)
       
@@ -147,132 +180,174 @@ const DistrictDetailPage = () => {
     }
   };
 
-  // 🔧 추가: 연령대별 데이터를 stats API로 가져와서 피라미드 차트용으로 변환
-  const loadAgeDistributionFromStats = async (apiParams: any) => {
+  // 🔧 수정: 탭에 따른 연령대별 데이터 로딩
+  const loadAgeDistributionFromStats = async (apiParams: any, currentTab: TabType = activeTab) => {
+    console.log('🚀 loadAgeDistributionFromStats 시작:', { apiParams, currentTab });
+    
     try {
       console.log('📊 Loading age distribution via stats API...');
       
-      // 현재 탭에 따른 period 설정
+      // 🔧 수정: 탭에 따른 period 설정
       let period: 'DAILY' | 'WEEKLY' | 'MONTHLY';
-      switch (activeTab) {
+      let fromDate: string;
+      let toDate: string;
+      
+      switch (currentTab) {
         case 'daily':
           period = 'DAILY';
+          fromDate = apiParams.date || apiParams.from;
+          toDate = apiParams.date || apiParams.to;
           break;
         case 'weekly':
           period = 'WEEKLY';
+          fromDate = apiParams.from;
+          toDate = apiParams.to;
           break;
         case 'monthly':
           period = 'MONTHLY';
-          break;
-        case 'age':
-          period = 'DAILY'; // 연령대 탭의 기본값
+          fromDate = apiParams.from;
+          toDate = apiParams.to;
           break;
         default:
           period = 'DAILY';
+          fromDate = apiParams.from;
+          toDate = apiParams.to;
       }
-
+      
+      console.log('📅 Age distribution period settings:', {
+        currentTab,
+        period,
+        fromDate,
+        toDate
+      });
+      
       // stats API로 연령대별 데이터 가져오기
       const statsResponse = await apiClient.getPopulationStats({
         districtId,
-        period,
-        from: apiParams.from,
-        to: apiParams.to
+        period, // 🔧 수정: 동적 period 사용
+        from: fromDate,
+        to: toDate,
+        gender: apiParams.gender,
+        ageBucket: apiParams.ageBucket
       });
-
+      
       console.log('📊 Stats response for age distribution:', statsResponse);
-
+      
       if (!statsResponse || statsResponse.length === 0) {
         console.log('❌ No stats data for age distribution');
         return null;
       }
-
-      // 첫 번째 결과의 연령대별 데이터 사용 (또는 평균 계산)
-      const ageStats = statsResponse[0]; // 또는 여러 날짜의 평균을 계산할 수 있음
+      
+      // 🔧 수정: 다중 데이터 처리 (WEEKLY, MONTHLY의 경우 여러 데이터가 올 수 있음)
+      let combinedMaleBuckets: Record<string, number> = {};
+      let combinedFemaleBuckets: Record<string, number> = {};
+      let totalDataPoints = 0;
+      
+      // 모든 데이터를 합산하여 평균 계산
+      statsResponse.forEach(ageStats => {
+        if (ageStats.maleBucketsAvg && ageStats.femaleBucketsAvg) {
+          totalDataPoints++;
+          
+          // 남성 데이터 누적
+          Object.entries(ageStats.maleBucketsAvg).forEach(([bucket, value]) => {
+            combinedMaleBuckets[bucket] = (combinedMaleBuckets[bucket] || 0) + value;
+          });
+          
+          // 여성 데이터 누적
+          Object.entries(ageStats.femaleBucketsAvg).forEach(([bucket, value]) => {
+            combinedFemaleBuckets[bucket] = (combinedFemaleBuckets[bucket] || 0) + value;
+          });
+        }
+      });
+      
+      if (totalDataPoints === 0) {
+        console.log('❌ No valid bucket data found');
+        return null;
+      }
+      
+      // 평균 계산
+      Object.keys(combinedMaleBuckets).forEach(bucket => {
+        combinedMaleBuckets[bucket] = combinedMaleBuckets[bucket] / totalDataPoints;
+      });
+      
+      Object.keys(combinedFemaleBuckets).forEach(bucket => {
+        combinedFemaleBuckets[bucket] = combinedFemaleBuckets[bucket] / totalDataPoints;
+      });
+      
+      console.log('📊 Combined bucket data:', {
+        totalDataPoints,
+        combinedMaleBuckets,
+        combinedFemaleBuckets
+      });
       
       // maleBucketsAvg와 femaleBucketsAvg를 AgeDistribution 배열로 변환
-      const ageDistributionArray = convertBucketsToAgeDistribution(
-        ageStats.maleBucketsAvg,
-        ageStats.femaleBucketsAvg
+      console.log('🔄 Converting buckets to age distribution...');
+      const ageDistributionArray = buildAgeDistributionFromBuckets(
+        combinedMaleBuckets,
+        combinedFemaleBuckets
       );
 
+      console.log('📊 Converted age distribution array:', ageDistributionArray);
+      console.log('📊 Converted array length:', ageDistributionArray.length);
+
+      if (ageDistributionArray.length === 0) {
+        console.log('❌ Converted age distribution array is empty');
+        return null;
+      }
+
       // AgeDistributionDto 형태로 구성
+      const firstStats = statsResponse[0];
       const ageDistributionDto: AgeDistributionDto = {
-        districtId: ageStats.districtId,
-        districtName: ageStats.districtName,
-        from: apiParams.from,
-        to: apiParams.to,
+        districtId: firstStats.districtId,
+        districtName: firstStats.districtName,
+        from: fromDate,
+        to: toDate,
         ageDistribution: ageDistributionArray
       };
 
-      console.log('✅ Converted age distribution from stats:', ageDistributionDto);
+      console.log('✅ Final ageDistributionDto:', ageDistributionDto);
       return ageDistributionDto;
 
     } catch (error) {
-      console.error('❌ Failed to load age distribution from stats:', error);
+      console.error('❌ Exception in loadAgeDistributionFromStats:', error);
       return null;
     }
   };
 
-  // 🔧 추가: maleBucketsAvg/femaleBucketsAvg를 AgeDistribution 배열로 변환
-  const convertBucketsToAgeDistribution = (
-    maleBuckets: Record<string, number>,
-    femaleBuckets: Record<string, number>
-  ): AgeDistribution[] => {
-    if (!maleBuckets || !femaleBuckets) {
-      return [];
-    }
-
-    // 모든 연령대 키 수집 (male과 female 모두)
-    const allAgeGroups = new Set([
-      ...Object.keys(maleBuckets),
-      ...Object.keys(femaleBuckets)
-    ]);
-
-    // 연령대별 데이터 변환
-    return Array.from(allAgeGroups)
-      .map(ageGroup => {
-        // F20T24 -> "20-24" 형태로 변환
-        const formattedAge = formatAgeGroup(ageGroup);
-        
-        return {
-          ageGroup: formattedAge,
-          male: maleBuckets[ageGroup] || 0,
-          female: femaleBuckets[ageGroup] || 0
-        };
-      })
-      .filter(item => item.male > 0 || item.female > 0) // 데이터가 있는 연령대만
-      .sort((a, b) => {
-        // 연령대 순으로 정렬 (0-9, 10-14, 15-19, ...)
-        const ageA = parseInt(a.ageGroup.split('-')[0]);
-        const ageB = parseInt(b.ageGroup.split('-')[0]);
-        return ageA - ageB;
+  // 🔧 임시: 간단한 테스트 함수
+  const testStatsAPI = async () => {
+    try {
+      console.log('🧪 Testing stats API...');
+      const testResponse = await apiClient.getPopulationStats({
+        districtId: 11680, // 강남구로 테스트
+        period: 'DAILY',
+        from: '2025-08-01',
+        to: '2025-08-11'
       });
+      console.log('🧪 Test response:', testResponse);
+    } catch (error) {
+      console.error('🧪 Test failed:', error);
+    }
   };
 
-  // 🔧 추가: 연령대 형식 변환 함수
-  const formatAgeGroup = (bucketKey: string): string => {
-    // F20T24 -> "20-24"
-    // F70T74 -> "70-74"
-    // F0T9 -> "0-9"
-    
-    const match = bucketKey.match(/F(\d+)T(\d+)/);
-    if (match) {
-      const startAge = match[1];
-      const endAge = match[2];
-      return `${startAge}-${endAge}`;
+  // useEffect에서 테스트 호출
+  useEffect(() => {
+    if (district) {
+      testStatsAPI(); // 임시 테스트
+      loadTabData();
     }
-    
-    // 매칭되지 않으면 원본 반환
-    return bucketKey.replace('F', '').replace('T', '-');
-  };
+  }, [district, activeTab, filters.date, filters.from, filters.to, filters.gender, filters.ageBucket]);
+
 
   const loadTabData = async () => {
+    console.log('🚀 loadTabData 시작! activeTab:', activeTab, 'districtId:', districtId);
+    
     try {
       setLoading(true);
       setApiErrors(prev => ({ ...prev, tabData: undefined }));
 
-      // 🔧 수정: 날짜 기준을 10일 전으로 통일 (대시보드와 동일하게)
-      const baseDate = getTenDaysAgo(); // 데이터가 있는 날짜로 설정
+      // 🔧 수정: 날짜 기준을 20일 전으로 통일 (하이라이트와 동일하게)
+      const baseDate = getTwentyDaysAgo(); // 🔧 수정: 20일 전 사용
       const lastMonthFromBase = (() => {
         const date = new Date(baseDate);
         date.setMonth(date.getMonth() - 1);
@@ -283,30 +358,84 @@ const DistrictDetailPage = () => {
         districtId,
         gender: filters.gender,
         ageBucket: filters.ageBucket,
-        date: filters.date || baseDate,           // 🔧 수정: getToday() → baseDate
-        from: filters.from || lastMonthFromBase,  // 🔧 수정: 10일 전 기준 한달 전
-        to: filters.to || baseDate                // 🔧 수정: getToday() → baseDate
+        date: filters.date || baseDate,
+        from: filters.from || lastMonthFromBase,
+        to: filters.to || baseDate
       };
 
-      console.log('📅 API Params with corrected dates:', {
+      console.log('📅 API Params with corrected dates (20 days ago base):', {
         activeTab,
         baseDate,
-        apiParams
+        apiParams,
+        filters
       });
 
+      // 🔧 수정: 탭별 연령 분포 데이터 로드
+      console.log('📊 Loading age distribution for tab:', activeTab);
+      
+      try {
+        const ageDistributionData = await loadAgeDistributionFromStats(apiParams, activeTab); // 🔧 수정: activeTab 전달
+        console.log('📊 Age distribution result:', ageDistributionData);
+        setAgeDistribution(ageDistributionData);
+        console.log('✅ Age distribution set to state:', ageDistributionData);
+      } catch (ageError) {
+        console.error('❌ Age distribution loading failed:', ageError);
+        setAgeDistribution(null);
+      }
+
+      // 🔧 수정: 탭별 데이터 로딩 + 항상 일간 데이터도 로드
       if (activeTab === 'daily') {
         console.log('📊 Loading daily (hourly) data for date:', apiParams.date);
+        try {
         const hourlyResponse = await apiClient.getHourlyTrends(apiParams);
         setHourlyData(hourlyResponse);
-        console.log('✅ Hourly data loaded:', hourlyResponse);
-      } else if (activeTab === 'weekly') {
-        console.log('📊 Loading weekly data from:', apiParams.from, 'to:', apiParams.to);
-        const weeklyResponse = await apiClient.getPopulationStats({
-          period: 'WEEKLY',
-          ...apiParams
+          console.log('✅ Hourly data loaded:', hourlyResponse);
+        } catch (hourlyError) {
+          console.error('❌ Hourly data loading failed:', hourlyError);
+          setHourlyData(null);
+        }
+      } else {
+        // 🔧 추가: 다른 탭에서도 기본 일간 데이터 로드 (피라미드 차트용)
+        console.log('📊 Loading basic daily data for non-daily tab');
+        try {
+          const hourlyResponse = await apiClient.getHourlyTrends({
+            districtId: apiParams.districtId,
+            date: apiParams.date,
+            gender: apiParams.gender,
+            ageBucket: apiParams.ageBucket
+          });
+          setHourlyData(hourlyResponse);
+          console.log('✅ Basic hourly data loaded for non-daily tab:', hourlyResponse);
+        } catch (error) {
+          console.error('❌ Basic hourly data loading failed:', error);
+        }
+      }
+
+      if (activeTab === 'weekly') {
+        console.log('📊 Loading weekly data (20 days ago base week)...');
+        
+        // 🔧 수정: 20일 전을 기준으로 해당 주차의 데이터 가져오기
+        const weeklyBaseDate = getTwentyDaysAgo(); // 🔧 수정: 20일 전 사용
+        const weekRange = getWeekRange(weeklyBaseDate);
+        
+        const weeklyParams = {
+          districtId: apiParams.districtId,
+          period: 'DAILY' as const,
+          from: weekRange.start,
+          to: weekRange.end,
+          gender: apiParams.gender,
+          ageBucket: apiParams.ageBucket
+        };
+        
+        console.log('📊 Weekly API params (20 days ago base week):', {
+          weeklyBaseDate,
+          weekRange,
+          weeklyParams
         });
+        
+        const weeklyResponse = await apiClient.getPopulationStats(weeklyParams);
         setWeeklyData(weeklyResponse);
-        console.log('✅ Weekly data loaded:', weeklyResponse);
+        console.log('✅ Weekly data loaded (20 days ago base week):', weeklyResponse);
       } else if (activeTab === 'monthly') {
         console.log('📊 Loading monthly data (12 months)');
         const monthlyResponse = await apiClient.getMonthlyTrends({
@@ -319,18 +448,13 @@ const DistrictDetailPage = () => {
         console.log('✅ Monthly data loaded:', monthlyResponse);
       }
 
-      // 🔧 수정: stats API를 사용해서 연령 분포 데이터 로드
-      console.log('📊 Loading age distribution via stats API from:', apiParams.from, 'to:', apiParams.to);
-      const ageDistributionData = await loadAgeDistributionFromStats(apiParams);
-      setAgeDistribution(ageDistributionData);
-      console.log('✅ Age distribution loaded via stats:', ageDistributionData);
-
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       setApiErrors(prev => ({ ...prev, tabData: errorMessage }));
       console.error('❌ Failed to load tab data:', err);
     } finally {
       setLoading(false);
+      console.log('🏁 loadTabData 완료');
     }
   };
 
@@ -351,11 +475,11 @@ const DistrictDetailPage = () => {
         setMemo(latestNote.content);
         setMemoDate(new Date(latestNote.createdAt).toLocaleDateString('ko-KR'));
       } else {
-        const savedMemo = localStorage.getItem(`district-memo-${districtId}`);
-        const savedDate = localStorage.getItem(`district-memo-date-${districtId}`);
-        
-        if (savedMemo) {
-          setMemo(savedMemo);
+    const savedMemo = localStorage.getItem(`district-memo-${districtId}`);
+    const savedDate = localStorage.getItem(`district-memo-date-${districtId}`);
+    
+    if (savedMemo) {
+      setMemo(savedMemo);
           if (savedDate) {
             setMemoDate(savedDate);
           }
@@ -372,8 +496,8 @@ const DistrictDetailPage = () => {
       
       if (savedMemo) {
         setMemo(savedMemo);
-        if (savedDate) {
-          setMemoDate(savedDate);
+    if (savedDate) {
+      setMemoDate(savedDate);
         }
       }
     } finally {
@@ -433,15 +557,15 @@ const DistrictDetailPage = () => {
       setApiErrors(prev => ({ ...prev, memo: errorMessage }));
       console.error('Failed to save memo:', err);
       
-      const currentDate = new Date().toLocaleDateString('ko-KR');
-      localStorage.setItem(`district-memo-${districtId}`, memo);
-      localStorage.setItem(`district-memo-date-${districtId}`, currentDate);
-      setMemoDate(currentDate);
-      setMemoSaved(true);
-      
-      setTimeout(() => {
-        setMemoSaved(false);
-      }, 3000);
+    const currentDate = new Date().toLocaleDateString('ko-KR');
+    localStorage.setItem(`district-memo-${districtId}`, memo);
+    localStorage.setItem(`district-memo-date-${districtId}`, currentDate);
+    setMemoDate(currentDate);
+    setMemoSaved(true);
+    
+    setTimeout(() => {
+      setMemoSaved(false);
+    }, 3000);
     } finally {
       setMemoLoading(false);
     }
@@ -480,6 +604,7 @@ const DistrictDetailPage = () => {
     { id: 'daily' as TabType, label: '일간', description: '시간대별 인구 현황' },
     { id: 'weekly' as TabType, label: '주간', description: '요일별 인구 현황' },
     { id: 'monthly' as TabType, label: '월간', description: '월별 인구 현황' }
+    // { id: 'age' as TabType, label: '연령', description: '연령대별 인구 분포' } // 🔧 삭제
   ];
 
   // 🔧 추가: 백엔드 데이터를 차트용 데이터로 변환하는 함수
@@ -491,14 +616,62 @@ const DistrictDetailPage = () => {
     }));
   };
 
-  // 🔧 추가: 주간 데이터를 차트용 데이터로 변환하는 함수
-  const convertToWeeklyChartData = (weeklyStats: PopulationAggDto[]) => {
-    return weeklyStats.map((stat, index) => ({
-      hour: index,  // HourlyLine 컴포넌트가 기대하는 필드명
-      value: stat.totalAvg,
-      hourLabel: `${index + 1}주차`,  // 또는 날짜 기반으로 변경 가능
-      date: stat.periodStartDate
-    }));
+  // 🔧 수정: DAILY 데이터를 요일별 차트 데이터로 변환하는 함수
+  const convertToWeeklyChartData = (dailyStats: PopulationAggDto[]) => {
+    console.log('🔄 Converting daily stats to weekday chart data:', dailyStats);
+    
+    if (!dailyStats || dailyStats.length === 0) {
+      console.log('❌ No daily stats data for weekly conversion');
+      return [];
+    }
+    
+    // 요일별 데이터 그룹화 및 평균 계산
+    const dayOfWeekMap: Record<number, { total: number; count: number; name: string; dates: string[] }> = {
+      0: { total: 0, count: 0, name: '일요일', dates: [] }, // Sunday
+      1: { total: 0, count: 0, name: '월요일', dates: [] }, // Monday
+      2: { total: 0, count: 0, name: '화요일', dates: [] }, // Tuesday
+      3: { total: 0, count: 0, name: '수요일', dates: [] }, // Wednesday
+      4: { total: 0, count: 0, name: '목요일', dates: [] }, // Thursday
+      5: { total: 0, count: 0, name: '금요일', dates: [] }, // Friday
+      6: { total: 0, count: 0, name: '토요일', dates: [] }  // Saturday
+    };
+    
+    // 각 일간 데이터를 요일별로 그룹화
+    dailyStats.forEach(stat => {
+      const date = new Date(stat.periodStartDate);
+      const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+      
+      console.log(`📅 Processing date: ${stat.periodStartDate}, dayOfWeek: ${dayOfWeek} (${dayOfWeekMap[dayOfWeek]?.name}), totalAvg: ${stat.totalAvg}`);
+      
+      if (dayOfWeekMap[dayOfWeek]) {
+        dayOfWeekMap[dayOfWeek].total += stat.totalAvg;
+        dayOfWeekMap[dayOfWeek].count += 1;
+        dayOfWeekMap[dayOfWeek].dates.push(stat.periodStartDate);
+      }
+    });
+    
+    console.log('📊 Grouped data by weekday:', dayOfWeekMap);
+    
+    // 월요일부터 일요일 순서로 정렬 (1,2,3,4,5,6,0)
+    const orderedDays = [1, 2, 3, 4, 5, 6, 0];
+    
+    const chartData = orderedDays.map((dayIndex, chartIndex) => {
+      const dayData = dayOfWeekMap[dayIndex];
+      const avgValue = dayData.count > 0 ? Math.round(dayData.total / dayData.count) : 0;
+      
+      return {
+        hour: chartIndex, // 0~6 (월~일)
+        value: avgValue,
+        hourLabel: dayData.name,
+        date: dayData.name,
+        dayOfWeek: dayIndex,
+        dataCount: dayData.count,
+        sourceDates: dayData.dates
+      };
+    });
+    
+    console.log('✅ Converted weekly chart data (weekday averages):', chartData);
+    return chartData;
   };
 
   // 🔧 수정: 연령 분포 데이터 검증 함수 (올바른 필드명 사용)
@@ -559,7 +732,8 @@ const DistrictDetailPage = () => {
         // 🔧 수정: 주간 데이터 변환 로직 개선
         console.log('📊 Weekly data validation:', {
           weeklyData,
-          dataLength: weeklyData?.length
+          dataLength: weeklyData?.length,
+          sampleData: weeklyData?.[0]
         });
 
         const hasWeeklyData = weeklyData && Array.isArray(weeklyData) && weeklyData.length > 0;
@@ -568,13 +742,28 @@ const DistrictDetailPage = () => {
           const weeklyChartData = convertToWeeklyChartData(weeklyData);
           console.log('✅ Converted weekly chart data:', weeklyChartData);
           
-          return (
-            <HourlyLine 
-              series={weeklyChartData}
-              title="주간 인구 현황"
-              height={350}
-            />
-          );
+          // 유효한 데이터가 있는지 확인
+          const hasValidWeeklyData = weeklyChartData.length > 0 && weeklyChartData.some(item => item.value > 0);
+          
+          if (hasValidWeeklyData) {
+            return (
+              <HourlyLine 
+                series={weeklyChartData}
+                title="주간 인구 현황 (요일별 평균)"
+                height={350}
+                chartType="weekly" // 🔧 추가: 주간 차트임을 명시
+              />
+            );
+          } else {
+            return (
+              <div className="h-64 flex items-center justify-center text-gray-500">
+                <div className="text-center">
+                  <p>요일별 데이터를 처리할 수 없습니다</p>
+                  <p className="text-sm mt-1">최근 7일간의 데이터가 부족합니다</p>
+                </div>
+              </div>
+            );
+          }
         } else {
           return (
             <div className="h-64 flex items-center justify-center text-gray-500">
@@ -605,9 +794,9 @@ const DistrictDetailPage = () => {
           console.log('✅ Converted monthly data:', convertedData);
           
           return (
-            <MonthlyLine 
+          <MonthlyLine 
               data={convertedData}
-              title="월별 인구 현황"
+            title="월별 인구 현황"
               height={350}
             />
           );
@@ -659,6 +848,35 @@ const DistrictDetailPage = () => {
   // 에러 3, 4, 5, 6 수정: 불필요한 함수들 제거 (FilterBar에서 처리)
   // updateFilter와 applyFilters 함수들을 제거
 
+  // 🔧 추가: 브라우저 탭 제목 업데이트
+  useEffect(() => {
+    if (district?.name) {
+      document.title = `${district.name} 상세 분석 - ALP-B`;
+    }
+  }, [district]);
+
+  // 🔧 추가: 특정 날짜가 속한 주의 월요일~일요일 범위를 계산하는 함수
+  const getWeekRange = (date: string) => {
+    const targetDate = new Date(date);
+    const dayOfWeek = targetDate.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    
+    // 해당 주의 월요일 계산 (ISO 8601 기준)
+    const mondayOfWeek = new Date(targetDate);
+    const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    mondayOfWeek.setDate(targetDate.getDate() + daysToMonday);
+    
+    // 해당 주의 일요일 계산
+    const sundayOfWeek = new Date(mondayOfWeek);
+    sundayOfWeek.setDate(mondayOfWeek.getDate() + 6);
+    
+    return {
+      start: mondayOfWeek.toISOString().split('T')[0],
+      end: sundayOfWeek.toISOString().split('T')[0],
+      baseDate: date,
+      baseDayOfWeek: dayOfWeek
+    };
+  };
+
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-gray-50">
@@ -676,20 +894,12 @@ const DistrictDetailPage = () => {
 
           {/* Header Section */}
           <div className="mb-8">
-            <div className="flex items-center space-x-4 mb-4">
-              <button
-                onClick={() => window.history.back()}
-                className="p-2 text-gray-600 hover:text-gray-900 rounded-md hover:bg-gray-100"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <h1 className="text-3xl font-bold text-gray-900">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
                 {district?.name || '자치구'} 상세 분석
               </h1>
-            </div>
-            <p className="text-gray-600">선택한 자치구의 생활인구 상세 현황을 확인하세요</p>
+            <p className="text-gray-600">
+              {district?.name ? `${district.name}의` : '선택한 자치구의'} 생활인구 상세 현황을 확인하세요
+            </p>
           </div>
 
           {/* KPI Cards */}
@@ -821,7 +1031,7 @@ const DistrictDetailPage = () => {
                   } else {
                     console.log('❌ Showing no data message for age data');
                     return (
-                      <div className="h-64 flex items-center justify-center text-gray-500">
+                  <div className="h-64 flex items-center justify-center text-gray-500">
                         <div className="text-center">
                           <p>연령대별 데이터가 없습니다</p>
                           <p className="text-xs mt-1">
@@ -830,7 +1040,7 @@ const DistrictDetailPage = () => {
                             length={ageDistribution?.ageDistribution?.length || 0}
                           </p>
                         </div>
-                      </div>
+                  </div>
                     );
                   }
                 })()}
@@ -863,9 +1073,9 @@ const DistrictDetailPage = () => {
                           {currentNote ? '서버에 저장된 메모' : '로컬에 저장된 메모'}
                         </span>
                         <div className="flex items-center space-x-2">
-                          <span className="text-xs text-gray-500">
-                            {memoDate || new Date().toLocaleDateString('ko-KR')}
-                          </span>
+                        <span className="text-xs text-gray-500">
+                          {memoDate || new Date().toLocaleDateString('ko-KR')}
+                        </span>
                           {currentNote && (
                             <button
                               onClick={deleteMemo}

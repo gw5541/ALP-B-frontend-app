@@ -9,13 +9,15 @@ export interface HourlyLineProps {
   title?: string;
   height?: number;
   color?: string;
+  chartType?: 'hourly' | 'weekly'; // 🔧 추가: 차트 타입 구분
 }
 
 const HourlyLine = ({ 
   series, 
   title = '시간대별 인구 현황', 
   height = 300,
-  color 
+  color,
+  chartType = 'hourly' // 🔧 추가: 기본값은 hourly
 }: HourlyLineProps) => {
   const colors = getChartColors();
   const lineColor = color || colors.primary;
@@ -47,10 +49,9 @@ const HourlyLine = ({
     console.log(`  - valid: ${point && typeof point.hour === 'number' && (typeof point.total === 'number' || typeof point.value === 'number')}`);
   });
 
-  // 🔧 수정: 백엔드 데이터 구조에 맞게 데이터 변환
+  // 🔧 수정: 차트 타입에 따른 데이터 변환
   const chartData = series
     .filter(point => {
-      // hour 필드와 total 또는 value 필드가 있는지 확인
       const hasHour = point && typeof point.hour === 'number';
       const hasValue = typeof point.total === 'number' || typeof point.value === 'number';
       const isValid = hasHour && hasValue;
@@ -60,11 +61,27 @@ const HourlyLine = ({
       }
       return isValid;
     })
-    .map(point => ({
-      hour: point.hour,
-      hourLabel: `${point.hour.toString().padStart(2, '0')}:00`,
-      value: point.total || point.value  // 🔧 total 필드 우선 사용, 없으면 value 사용
-    }));
+    .map(point => {
+      // 🔧 수정: 차트 타입에 따른 라벨 처리
+      let labelValue: string;
+      
+      if (chartType === 'weekly' && point.hourLabel) {
+        // 주간 차트의 경우 전달받은 hourLabel(요일명) 사용
+        labelValue = point.hourLabel;
+      } else if (point.hourLabel) {
+        // 기존 hourLabel이 있으면 사용
+        labelValue = point.hourLabel;
+      } else {
+        // 없으면 시간 형식으로 생성 (일간 차트용)
+        labelValue = `${point.hour.toString().padStart(2, '0')}:00`;
+      }
+      
+      return {
+        hour: point.hour,
+        hourLabel: labelValue,
+        value: point.total || point.value
+      };
+    });
 
   console.log('✅ 필터링 후 chartData:', chartData);
   console.log('ChartData length:', chartData.length);

@@ -100,16 +100,23 @@ const ReportsSummaryContent = () => {
       if (chartMode === 'hourly') {
         const districtId = filters.districtId;
         const params = {
-          districtId,
+          districtId,  // 🔧 여기서 districtId는 optional
           date: filters.date || getToday(),
           gender: filters.gender,
           ageBucket: filters.ageBucket
         };
 
         if (districtId) {
-          const hourlyResponse = await apiClient.getHourlyTrends(params);
+          // 🔧 수정: districtId가 있을 때만 API 호출하고, 타입 안전하게 전달
+          const hourlyResponse = await apiClient.getHourlyTrends({
+            districtId, // if 문 안에 있으므로 districtId는 확실히 존재
+            date: params.date,
+            gender: params.gender,
+            ageBucket: params.ageBucket
+          });
           setHourlyData([hourlyResponse]);
         } else {
+          // districtId가 없는 경우의 로직
           const topDistricts = monthlyStats
             .sort((a, b) => b.totalAvg - a.totalAvg)
             .slice(0, 5);

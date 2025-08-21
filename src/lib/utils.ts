@@ -20,6 +20,13 @@ export const getTenDaysAgo = (): string => {
   return formatDate(date);
 };
 
+// 🔧 추가: 20일 전 날짜 함수 (주간 차트용)
+export const getTwentyDaysAgo = (): string => {
+  const date = new Date();
+  date.setDate(date.getDate() - 20);  // 오늘부터 20일 전
+  return formatDate(date);
+};
+
 export const getLastMonth = (): string => {
   const date = new Date();
   date.setMonth(date.getMonth() - 1);
