@@ -241,35 +241,35 @@ const ReportsSummaryContent = () => {
 
         if (timePeriod === 'daily') {
           // 일간: 시간대별 차트
-          const params = {
-            districtId,
+        const params = {
+          districtId,
             date: filters.date || baseDate,
-            gender: filters.gender,
-            ageBucket: filters.ageBucket
-          };
+          gender: filters.gender,
+          ageBucket: filters.ageBucket
+        };
 
-          if (districtId) {
-            const hourlyResponse = await apiClient.getHourlyTrends({
-              districtId,
-              date: params.date,
-              gender: params.gender,
-              ageBucket: params.ageBucket
-            });
-            setHourlyData([hourlyResponse]);
-          } else {
+        if (districtId) {
+          const hourlyResponse = await apiClient.getHourlyTrends({
+            districtId,
+            date: params.date,
+            gender: params.gender,
+            ageBucket: params.ageBucket
+          });
+          setHourlyData([hourlyResponse]);
+        } else {
             // 관심 지역별 시간대별 데이터
-            const selectedDistricts = favoriteDistricts.filter((id): id is number => id !== null);
-            if (selectedDistricts.length > 0) {
-              const favoriteHourlyPromises = selectedDistricts.map(internalDistrictId =>
-                apiClient.getHourlyTrends({
-                  districtId: internalDistrictId,
-                  date: params.date,
-                  gender: params.gender,
-                  ageBucket: params.ageBucket
-                })
-              );
-              const favoriteHourlyResponses = await Promise.all(favoriteHourlyPromises);
-              setFavoriteHourlyData(favoriteHourlyResponses);
+          const selectedDistricts = favoriteDistricts.filter((id): id is number => id !== null);
+          if (selectedDistricts.length > 0) {
+            const favoriteHourlyPromises = selectedDistricts.map(internalDistrictId =>
+              apiClient.getHourlyTrends({
+                districtId: internalDistrictId,
+                date: params.date,
+                gender: params.gender,
+                ageBucket: params.ageBucket
+              })
+            );
+            const favoriteHourlyResponses = await Promise.all(favoriteHourlyPromises);
+            setFavoriteHourlyData(favoriteHourlyResponses);
             }
           }
         } else if (timePeriod === 'monthly') {
@@ -763,7 +763,7 @@ const ReportsSummaryContent = () => {
     if (chartMode === 'hourly') {
       if (timePeriod === 'daily') {
         // 일간: 시간대별 차트
-        if (hourlyData.length > 0) {
+      if (hourlyData.length > 0) {
           return (
             <HourlyLine 
               series={hourlyData[0].currentData}
@@ -773,23 +773,23 @@ const ReportsSummaryContent = () => {
           );
         }
 
-        if (favoriteHourlyData.length > 0) {
-          return (
-            <div className="space-y-6">
-              <h4 className="text-lg font-medium text-gray-900 mb-4">관심 지역별 시간대별 인구 현황</h4>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {favoriteHourlyData.map((data, index) => (
-                  <div key={data.districtId || index} className="bg-white border border-gray-200 rounded-lg p-4">
-                    <HourlyLine 
-                      series={data.currentData}
-                      title={`${data.districtName || `자치구 ${data.districtId}`}`}
-                      height={280}
-                    />
-                  </div>
-                ))}
-              </div>
+      if (favoriteHourlyData.length > 0) {
+        return (
+          <div className="space-y-6">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">관심 지역별 시간대별 인구 현황</h4>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {favoriteHourlyData.map((data, index) => (
+                <div key={data.districtId || index} className="bg-white border border-gray-200 rounded-lg p-4">
+                  <HourlyLine 
+                    series={data.currentData}
+                    title={`${data.districtName || `자치구 ${data.districtId}`}`}
+                    height={280}
+                  />
+                </div>
+              ))}
             </div>
-          );
+          </div>
+        );
         }
       } else if (timePeriod === 'monthly') {
         // 주간: 요일별 차트
@@ -971,8 +971,8 @@ const ReportsSummaryContent = () => {
             <div className="absolute inset-0 bg-gray-500 bg-opacity-30 rounded-lg flex items-center justify-center pointer-events-auto cursor-not-allowed">
               <div className="bg-white px-4 py-2 rounded-md shadow-md">
                 <p className="text-sm text-gray-600 font-medium">필터 기능 개발 중...</p>
+          </div>
               </div>
-            </div>
           </div>
 
           {/* Chart Section */}
@@ -1060,7 +1060,7 @@ const ReportsSummaryContent = () => {
             ) : (
               <StatTable data={getUniqueDistrictStats(monthlyStats)} />
             )}
-          </Card>
+            </Card>
           </div>
 
           {/* Memo Section */}
@@ -1125,9 +1125,9 @@ const ReportsSummaryContent = () => {
                     >
                       {memoLoading ? '저장 중...' : '저장'}
                     </button>
-                  </div>
                 </div>
-              </Card>
+              </div>
+            </Card>
 
               {/* 메모 목록 카드 */}
               <Card title="메모 목록">
