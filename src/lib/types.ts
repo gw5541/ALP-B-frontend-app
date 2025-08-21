@@ -1,9 +1,9 @@
 // Core API Types based on ALP-B-backend-app/contracts/api-contract.yml
 
 export interface District {
-  id: number;
-  name: string;
-  code?: string;
+  id: number;          // 프론트엔드 내부 식별자 (1~25)
+  name: string;        // 자치구명
+  pathId?: string;     // SVG 지도용 (옵션)
 }
 
 export interface PopulationPoint {
