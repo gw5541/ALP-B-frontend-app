@@ -847,7 +847,12 @@ const ReportsSummaryContent = () => {
               <h4 className="text-lg font-medium text-gray-900 mb-4">관심 지역별 주차별 인구 현황</h4>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {favoriteMonthlyData.map((data, index) => {
-                  const districtName = data[0]?.districtId ? `자치구 ${data[0].districtId}` : `지역 ${index + 1}`;
+                  // 관심 지역 배열에서 해당 인덱스의 내부 ID 가져오기
+                  const validFavorites = favoriteDistricts.filter((id): id is number => id !== null);
+                  const internalId = validFavorites[index];
+                  const district = DISTRICTS.find(d => d.id === internalId);
+                  const districtName = district?.name || `지역 ${index + 1}`;
+                  
                   return (
                     <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
                       <MonthlyLine 
