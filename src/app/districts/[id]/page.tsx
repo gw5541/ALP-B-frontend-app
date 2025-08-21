@@ -1030,17 +1030,6 @@ const DistrictDetailPage = () => {
             </div>
           )}
 
-          {/* Filters */}
-          <div className="mb-6">
-            <FilterBar
-              showGenderFilter={true}
-              showAgeBucketFilter={true}
-              showDateFilter={activeTab === 'daily'}
-              showPresetManager={true}
-              className="mb-4"
-            />
-          </div>
-
           {/* Tabs */}
           <div className="mb-6">
             <div className="border-b border-gray-200">
@@ -1063,6 +1052,17 @@ const DistrictDetailPage = () => {
                 ))}
               </nav>
             </div>
+          </div>
+
+          {/* Filters - 탭 아래로 이동 */}
+          <div className="mb-6">
+            <FilterBar
+              showGenderFilter={true}
+              showAgeBucketFilter={true}
+              showDateFilter={false}
+              showPresetManager={true}
+              className="mb-4"
+            />
           </div>
 
           {/* Main Content Grid */}
