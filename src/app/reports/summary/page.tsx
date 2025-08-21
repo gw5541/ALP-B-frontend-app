@@ -302,7 +302,7 @@ const ReportsSummaryContent = () => {
             }
           }
         } else if (timePeriod === 'yearly') {
-          // 연간: 주차별 차트
+          // 월간: 주차별 차트
           if (districtId) {
             const monthlyResponse = await apiClient.getWeeklyTrends({
               districtId,
@@ -829,7 +829,7 @@ const ReportsSummaryContent = () => {
           );
         }
       } else if (timePeriod === 'yearly') {
-        // 연간: 주차별 차트
+        // 월간: 주차별 차트
         if (monthlyData.length > 0) {
           return (
             <MonthlyLine 
@@ -874,7 +874,7 @@ const ReportsSummaryContent = () => {
         <div className="h-64 flex items-center justify-center text-gray-500">
           {timePeriod === 'daily' && '시간대별 데이터가 없습니다'}
           {timePeriod === 'monthly' && '요일별 데이터가 없습니다'}
-          {timePeriod === 'yearly' && '주차별 데이터가 없습니다'}
+          {timePeriod === 'yearly' && '월간 데이터가 없습니다'}
         </div>
       );
     }
@@ -1045,7 +1045,7 @@ const ReportsSummaryContent = () => {
                           : 'text-red-600 hover:text-red-700'
                       }`}
                     >
-                      연간
+                      월간
                     </button>
                   </div>
                 </div>
