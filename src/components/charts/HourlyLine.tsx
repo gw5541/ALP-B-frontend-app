@@ -5,7 +5,7 @@ import { HourPoint } from '@/lib/types';
 import { formatPopulation, generateHourLabels, getChartColors } from '@/lib/utils';
 
 export interface HourlyLineProps {
-  series: HourPoint[] | undefined | null;  // undefined/null 허용
+  series: any[] | undefined | null;  // 🔧 백엔드 데이터 구조에 맞게 any로 변경
   title?: string;
   height?: number;
   color?: string;
@@ -20,8 +20,16 @@ const HourlyLine = ({
   const colors = getChartColors();
   const lineColor = color || colors.primary;
 
+  // 🔧 디버깅: series 데이터 로그 추가
+  console.log('🔍 HourlyLine 디버깅:');
+  console.log('Raw series data:', series);
+  console.log('Series type:', typeof series);
+  console.log('Series is array:', Array.isArray(series));
+  console.log('Series length:', series?.length);
+
   // 🔧 수정: series 유효성 검사를 맨 위로 이동
   if (!series || !Array.isArray(series) || series.length === 0) {
+    console.log('❌ Series 데이터가 비어있음');
     return (
       <div className="w-full bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-center" style={{ height }}>
         <p className="text-gray-500">데이터가 없습니다.</p>
@@ -29,20 +37,53 @@ const HourlyLine = ({
     );
   }
 
-  // 🔧 수정: 안전한 데이터 변환
+  // 🔧 디버깅: 각 데이터 포인트 검사
+  console.log('각 데이터 포인트 검사:');
+  series.forEach((point, index) => {
+    console.log(`Point ${index}:`, point);
+    console.log(`  - hour: ${point?.hour} (type: ${typeof point?.hour})`);
+    console.log(`  - total: ${point?.total} (type: ${typeof point?.total})`);
+    console.log(`  - value: ${point?.value} (type: ${typeof point?.value})`);
+    console.log(`  - valid: ${point && typeof point.hour === 'number' && (typeof point.total === 'number' || typeof point.value === 'number')}`);
+  });
+
+  // 🔧 수정: 백엔드 데이터 구조에 맞게 데이터 변환
   const chartData = series
-    .filter(point => point && typeof point.hour === 'number' && typeof point.value === 'number')
+    .filter(point => {
+      // hour 필드와 total 또는 value 필드가 있는지 확인
+      const hasHour = point && typeof point.hour === 'number';
+      const hasValue = typeof point.total === 'number' || typeof point.value === 'number';
+      const isValid = hasHour && hasValue;
+      
+      if (!isValid) {
+        console.log('❌ 필터링된 포인트:', point);
+      }
+      return isValid;
+    })
     .map(point => ({
       hour: point.hour,
       hourLabel: `${point.hour.toString().padStart(2, '0')}:00`,
-      value: point.value
+      value: point.total || point.value  // 🔧 total 필드 우선 사용, 없으면 value 사용
     }));
+
+  console.log('✅ 필터링 후 chartData:', chartData);
+  console.log('ChartData length:', chartData.length);
 
   // 🔧 추가: 변환된 데이터가 비어있는 경우 처리
   if (chartData.length === 0) {
+    console.log('❌ 필터링 후 데이터가 비어있음');
     return (
       <div className="w-full bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-center" style={{ height }}>
         <p className="text-gray-500">유효한 데이터가 없습니다.</p>
+        {/* 🔧 디버깅: 개발 환경에서 원본 데이터 표시 */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-2 text-xs text-red-600">
+            <p>원본 데이터: {series.length}개</p>
+            <p>첫 번째 포인트: {JSON.stringify(series[0])}</p>
+            <p>첫 번째 포인트 total: {series[0]?.total}</p>
+            <p>첫 번째 포인트 value: {series[0]?.value}</p>
+          </div>
+        )}
       </div>
     );
   }
