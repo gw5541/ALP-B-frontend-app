@@ -402,8 +402,13 @@ const DistrictDetailPage = () => {
       if (activeTab === 'daily') {
         console.log('📊 Loading daily (hourly) data for date:', apiParams.date);
         try {
-        const hourlyResponse = await apiClient.getHourlyTrends(apiParams);
-        setHourlyData(hourlyResponse);
+          const hourlyResponse = await apiClient.getHourlyTrends({
+            districtId: apiParams.districtId,
+            date: apiParams.date,
+            gender: apiParams.gender,
+            ageBucket: apiParams.ageBucket
+          });
+          setHourlyData(hourlyResponse);
           console.log('✅ Hourly data loaded:', hourlyResponse);
         } catch (hourlyError) {
           console.error('❌ Hourly data loading failed:', hourlyError);

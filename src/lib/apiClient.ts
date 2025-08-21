@@ -263,6 +263,11 @@ class ApiClient {
     const districtCode = this.getDistrictCodeForAPI(params.districtId);
     queryParams.append('districtId', districtCode);
     
+    // 🔧 수정: gender와 ageBucket 파라미터 추가
+    if (params.gender && params.gender !== 'all') queryParams.append('gender', params.gender);
+    if (params.ageBucket && params.ageBucket !== 'all') queryParams.append('ageBucket', params.ageBucket);
+    if (params.compare) queryParams.append('compare', params.compare);
+    
     // 🔧 백엔드에서 currentData로 반환하므로 그대로 사용
     return this.client.get(`/population/trends/hourly?${queryParams.toString()}`);
   }
