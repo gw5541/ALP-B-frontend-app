@@ -1187,16 +1187,22 @@ const DistrictDetailPage = () => {
             </div>
           </div>
 
-          {/* Filters - 탭 아래로 이동 */}
-          <div className="mb-6">
-            <FilterBar
-              showGenderFilter={true}
-              showAgeBucketFilter={true}
-              showDateFilter={false}
-              showPresetManager={true}
-              className="mb-4"
-            />
-          </div>
+          {/* Filters - 탭 아래로 이동 (임시 비활성화) */}
+<div className="mb-6 relative">
+  <FilterBar
+    showGenderFilter={true}
+    showAgeBucketFilter={true}
+    showDateFilter={false}
+    showPresetManager={true}
+    className="mb-4"
+  />
+  {/* 필터 비활성화 오버레이 */}
+  <div className="absolute inset-0 bg-gray-500 bg-opacity-30 rounded-lg flex items-center justify-center pointer-events-auto cursor-not-allowed">
+    <div className="bg-white px-4 py-2 rounded-md shadow-md">
+      <p className="text-sm text-gray-600 font-medium">필터 기능 개발 중...</p>
+    </div>
+  </div>
+</div>
 
           {/* Main Content Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
