@@ -220,7 +220,7 @@ export type AgeBucket =
 export type AgeBucketSimple = 'all' | '10s' | '20s' | '30s' | '40s' | '50s' | '60plus';
 
 export type PeriodType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'DAYTIME' | 'NIGHTTIME';
-export type TabType = 'daily' | 'weekly' | 'monthly';
+export type TabType = 'daily' | 'weekly' | 'monthly' | 'age';
 
 // URL Query Types
 export interface FilterParams {
@@ -237,4 +237,12 @@ export interface FilterParams {
 export interface ErrorResponse {
   code: string;
   message: string;
+}
+
+// API 에러 상태 타입에 highlights 추가
+export interface ApiErrors {
+  district?: string;
+  charts?: string;
+  notes?: string;
+  highlights?: string;  // 🔧 추가
 }

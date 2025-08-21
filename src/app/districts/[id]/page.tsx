@@ -69,6 +69,7 @@ const DistrictDetailPage = () => {
     district?: string;
     tabData?: string;
     memo?: string;
+    highlights?: string;  // 🔧 추가
   }>({});
 
   const filters = parseSearchParams(searchParams);
@@ -78,9 +79,47 @@ const DistrictDetailPage = () => {
     loadMemo();
   }, [districtId]);
 
+  // 🔧 수정: 탭 변경 시 highlights 업데이트
   useEffect(() => {
-    loadTabData();
-  }, [activeTab, districtId, filters]);
+    if (district && activeTab) {
+      loadHighlights(activeTab);
+    }
+  }, [district, activeTab]);
+
+  // 🔧 추가: highlights 로드 함수
+  const loadHighlights = async (tab: TabType) => {
+    try {
+      setApiErrors(prev => ({ ...prev, highlights: undefined }));
+      
+      let period: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+      switch (tab) {
+        case 'daily':
+          period = 'DAILY';
+          break;
+        case 'weekly':
+          period = 'WEEKLY';
+          break;
+        case 'monthly':
+          period = 'MONTHLY';
+          break;
+        case 'age':  // 🔧 수정: 이제 'age'가 TabType에 포함됨
+          // 연령대 탭에서는 highlights를 표시하지 않음
+          setHighlights(null);
+          return;
+        default:
+          return;
+      }
+
+      console.log(`📊 Loading highlights for ${period}`);
+      const highlightsData = await apiClient.getPopulationHighlights(districtId, period);
+      setHighlights(highlightsData[0] || null);
+      
+    } catch (err) {
+      const errorMessage = getErrorMessage(err);
+      setApiErrors(prev => ({ ...prev, highlights: errorMessage }));
+      console.error('Failed to load highlights:', err);
+    }
+  };
 
   const loadDistrictInfo = async () => {
     try {
@@ -90,8 +129,8 @@ const DistrictDetailPage = () => {
       const currentDistrict = districts.find(d => d.id === districtId);
       setDistrict(currentDistrict || { id: districtId, name: `자치구 ${districtId}` });
 
-      const highlightsData = await apiClient.getPopulationHighlights(districtId);
-      setHighlights(highlightsData[0] || null);
+      // 🔧 제거: 여기서는 highlights 로드하지 않음 (탭별로 로드)
+      
     } catch (err) {
       const errorMessage = getErrorMessage(err);
       setApiErrors(prev => ({ ...prev, district: errorMessage }));
@@ -409,36 +448,56 @@ const DistrictDetailPage = () => {
           </div>
 
           {/* KPI Cards */}
-          {highlights && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          {highlights && activeTab !== 'age' && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
               <Card padding="sm">
                 <div className="text-center">
-                  <p className="text-sm text-gray-600 mb-1">일평균 인구</p>
+                  <p className="text-sm text-gray-600 mb-1">
+                    {activeTab === 'daily' && '일 평균 인구'}
+                    {activeTab === 'weekly' && '주 평균 인구'}
+                    {activeTab === 'monthly' && '월 평균 인구'}
+                  </p>
                   <p className="text-2xl font-bold text-gray-900">{formatPopulation(highlights.avgDaily)}</p>
                 </div>
               </Card>
               <Card padding="sm">
                 <div className="text-center">
-                  <p className="text-sm text-gray-600 mb-1">최대 인구 시간</p>
+                  <p className="text-sm text-gray-600 mb-1">
+                    {activeTab === 'daily' && '최대 인구 시간'}
+                    {activeTab === 'weekly' && '최대 인구 요일'}
+                    {activeTab === 'monthly' && '최대 인구 날짜'}
+                  </p>
                   <p className="text-lg font-semibold text-blue-600">{highlights.peakTime}</p>
                   <p className="text-sm text-gray-500">{formatPopulation(highlights.peakValue)}명</p>
                 </div>
               </Card>
               <Card padding="sm">
                 <div className="text-center">
-                  <p className="text-sm text-gray-600 mb-1">최소 인구 시간</p>
+                  <p className="text-sm text-gray-600 mb-1">
+                    {activeTab === 'daily' && '최소 인구 시간'}
+                    {activeTab === 'weekly' && '최소 인구 요일'}
+                    {activeTab === 'monthly' && '최소 인구 날짜'}
+                  </p>
                   <p className="text-lg font-semibold text-green-600">{highlights.lowTime}</p>
                   <p className="text-sm text-gray-500">{formatPopulation(highlights.lowValue)}명</p>
                 </div>
               </Card>
-              <Card padding="sm">
+              {/* 🔧 주석 처리: 증감률 카드 제거 */}
+              {/* <Card padding="sm">
                 <div className="text-center">
                   <p className="text-sm text-gray-600 mb-1">증감률</p>
                   <p className={`text-lg font-semibold ${highlights.growthRate >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
                     {highlights.growthRate >= 0 ? '+' : ''}{highlights.growthRate.toFixed(1)}%
                   </p>
                 </div>
-              </Card>
+              </Card> */}
+            </div>
+          )}
+
+          {/* 🔧 추가: highlights 에러 표시 */}
+          {apiErrors.highlights && activeTab !== 'age' && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-sm text-red-600">통계 요약 로드 실패: {apiErrors.highlights}</p>
             </div>
           )}
 

@@ -350,16 +350,146 @@ class ApiClient {
   // ====== 기존 API들 (호환성 유지) ======
 
   // Population Highlights API - 에러 13 수정
-  async getPopulationHighlights(districtId?: number): Promise<PopulationHighlights[]> {
-    let queryParams = '';
-    if (districtId) {
-      const districtCode = this.getDistrictCode(districtId);
-      if (districtCode) {
-        queryParams = `?districtId=${districtCode}`;
+  async getPopulationHighlights(districtId: number, period: 'DAILY' | 'WEEKLY' | 'MONTHLY' = 'DAILY'): Promise<PopulationHighlights[]> {
+    try {
+      let from: string, to: string, periodType: PeriodType;
+
+      // 🔧 수정: 기간별 날짜 계산 (모두 10일 전 기준으로 통일)
+      const baseDate = new Date();
+      baseDate.setDate(baseDate.getDate() - 10); // 10일 전 날짜를 기준으로 설정
+
+      switch (period) {
+        case 'DAILY':
+          // 10일 전 날짜 기준
+          from = this.formatDate(baseDate);
+          to = this.formatDate(baseDate);
+          periodType = 'DAILY';
+          break;
+        case 'WEEKLY':
+          // 🔧 수정: 10일 전 날짜가 속한 주의 월요일부터 일요일까지
+          const targetDate = new Date(baseDate);
+          
+          // 해당 주의 월요일 계산 (0=일요일, 1=월요일, ... 6=토요일)
+          const dayOfWeek = targetDate.getDay();
+          const startOfWeek = new Date(targetDate);
+          const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // 일요일이면 6, 아니면 dayOfWeek - 1
+          startOfWeek.setDate(targetDate.getDate() - daysToMonday);
+          
+          // 해당 주의 일요일 계산
+          const endOfWeek = new Date(startOfWeek);
+          endOfWeek.setDate(startOfWeek.getDate() + 6);
+          
+          from = this.formatDate(startOfWeek);
+          to = this.formatDate(endOfWeek);
+          periodType = 'DAILY'; // 일별 데이터로 주간 최대/최소 찾기
+          
+          console.log(`📅 WEEKLY 계산: 기준일=${this.formatDate(targetDate)}, 주간=${from}~${to}`);
+          break;
+        case 'MONTHLY':
+          // 🔧 수정: 10일 전 날짜가 속한 월의 1일부터 말일까지
+          const targetMonth = new Date(baseDate);
+          const startOfMonth = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), 1);
+          const endOfMonth = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0);
+          
+          from = this.formatDate(startOfMonth);
+          to = this.formatDate(endOfMonth);
+          periodType = 'DAILY'; // 일별 데이터로 월간 최대/최소 찾기
+          
+          console.log(`📅 MONTHLY 계산: 기준일=${this.formatDate(targetMonth)}, 월간=${from}~${to}`);
+          break;
       }
+
+      console.log(`📊 Highlights 계산: period=${period}, from=${from}, to=${to}`);
+
+      // 🔧 1. 평균 인구 계산 (stats API 사용)
+      const statsResponse = await this.getPopulationStats({
+        districtId,
+        period: periodType,
+        from,
+        to
+      });
+
+      console.log('📊 Stats Response:', statsResponse);
+
+      if (!statsResponse || statsResponse.length === 0) {
+        throw new Error('통계 데이터를 찾을 수 없습니다.');
+      }
+
+      // 평균 계산
+      const avgPopulation = statsResponse.reduce((sum, stat) => sum + stat.totalAvg, 0) / statsResponse.length;
+
+      let peakInfo = { time: '', value: 0 };
+      let lowInfo = { time: '', value: Infinity };
+
+      // 🔧 2-3. 최대/최소 인구 시간/날짜 계산
+      if (period === 'DAILY') {
+        // 일간: 시간별 데이터에서 최대/최소 시간 찾기
+        const hourlyResponse = await this.getHourlyTrends({
+          districtId,
+          date: from
+        });
+
+        console.log('📊 Hourly Response:', hourlyResponse);
+
+        if (hourlyResponse && hourlyResponse.currentData && hourlyResponse.currentData.length > 0) {
+          // 🔧 수정: currentData는 백엔드 형식이므로 total 필드 사용
+          hourlyResponse.currentData.forEach((point: any) => {
+            const totalValue = point.total || point.value || 0;  // total 우선, 없으면 value 사용
+            
+            if (totalValue > peakInfo.value) {
+              peakInfo = {
+                time: `${point.hour.toString().padStart(2, '0')}:00`,
+                value: totalValue
+              };
+            }
+            if (totalValue < lowInfo.value) {
+              lowInfo = {
+                time: `${point.hour.toString().padStart(2, '0')}:00`,
+                value: totalValue
+              };
+            }
+          });
+        }
+      } else {
+        // 주간/월간: 일별 데이터에서 최대/최소 날짜 찾기
+        statsResponse.forEach(stat => {
+          const dateLabel = period === 'WEEKLY' 
+            ? this.formatWeekday(stat.periodStartDate)  // 요일로 표시
+            : this.formatMonthDay(stat.periodStartDate); // 월일로 표시
+
+          if (stat.totalAvg > peakInfo.value) {
+            peakInfo = {
+              time: dateLabel,
+              value: stat.totalAvg
+            };
+          }
+          if (stat.totalAvg < lowInfo.value) {
+            lowInfo = {
+              time: dateLabel,
+              value: stat.totalAvg
+            };
+          }
+        });
+      }
+
+      const highlights: PopulationHighlights = {
+        districtId,
+        avgDaily: Math.round(avgPopulation),
+        peakTime: peakInfo.time,
+        peakValue: Math.round(peakInfo.value),
+        lowTime: lowInfo.time,
+        lowValue: Math.round(lowInfo.value),
+        growthRate: 0 // 🔧 주석 처리 예정
+      };
+
+      console.log('📊 계산된 Highlights:', highlights);
+
+      return [highlights];
+
+    } catch (error) {
+      console.error('❌ Highlights 계산 실패:', error);
+      throw error;
     }
-    
-    return await this.client.get(`/population/highlights${queryParams}`);
   }
 
   // ====== 호환성 메서드들 (deprecated) ======
@@ -455,6 +585,28 @@ class ApiClient {
   }): Promise<AgeDistribution[]> {
     const ageData = await this.getAgeDistribution(params);
     return ageData.ageDistribution;
+  }
+
+  // 🔧 추가: 날짜 포맷팅 헬퍼 메서드들
+  private getTenDaysAgo(): string {
+    const date = new Date();
+    date.setDate(date.getDate() - 10);
+    return this.formatDate(date);
+  }
+
+  private formatDate(date: Date): string {
+    return date.toISOString().split('T')[0];
+  }
+
+  private formatWeekday(dateString: string): string {
+    const date = new Date(dateString);
+    const weekdays = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+    return weekdays[date.getDay()];
+  }
+
+  private formatMonthDay(dateString: string): string {
+    const date = new Date(dateString);
+    return `${date.getMonth() + 1}월 ${date.getDate()}일`;
   }
 }
 
