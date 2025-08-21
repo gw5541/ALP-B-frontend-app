@@ -238,6 +238,7 @@ class ApiClient {
       if (params.ageBucket && params.ageBucket !== 'all') queryParams.append('ageBucket', params.ageBucket);
       if (params.compare) queryParams.append('compare', params.compare.toString());
 
+      // 🔧 백엔드에서 currentData로 반환하므로 그대로 사용
       return this.client.get(`/population/trends/hourly?${queryParams.toString()}`);
     });
   }
@@ -424,7 +425,7 @@ class ApiClient {
       date: trendData.date,
       districtId: trendData.districtId,
       districtName: trendData.districtName,
-      hourlyData: trendData.hourlyData
+      hourlyData: trendData.currentData  // 🔧 수정: currentData 사용
     };
   }
 
@@ -437,7 +438,13 @@ class ApiClient {
     ageBucket?: string;
   }): Promise<MonthlyPopulation[]> {
     const trendData = await this.getMonthlyTrends(params);
-    return trendData.monthlyData;
+    
+    // 🔧 수정: MonthlyPopulationBackend를 MonthlyPopulation으로 변환
+    return trendData.monthlyData.map(item => ({
+      month: item.yearMonth,  // yearMonth를 month로 매핑
+      value: item.totalAvg,   // totalAvg를 value로 매핑
+      districtId: trendData.districtId
+    }));
   }
 
   /** @deprecated getAgeDistribution 사용 권장 */

@@ -23,7 +23,9 @@ import {
   NoteDto,
   NoteCreateRequest,
   NoteUpdateRequest,
-  FilterParams
+  FilterParams,
+  MonthlyPopulation,  // 🔧 추가
+  MonthlyPopulationBackend  // 🔧 추가
 } from '@/lib/types';
 import { apiClient } from '@/lib/apiClient';
 import { 
@@ -295,6 +297,15 @@ const DistrictDetailPage = () => {
     { id: 'monthly' as TabType, label: '월간', description: '월별 인구 현황' }
   ];
 
+  // 🔧 추가: 백엔드 데이터를 차트용 데이터로 변환하는 함수
+  const convertToMonthlyPopulation = (backendData: MonthlyPopulationBackend[]): MonthlyPopulation[] => {
+    return backendData.map(item => ({
+      month: item.yearMonth,
+      value: item.totalAvg,
+      districtId: district?.id
+    }));
+  };
+
   const renderTabContent = () => {
     if (loading) {
       return <LoadingSpinner size="lg" message="데이터를 불러오는 중..." />;
@@ -314,7 +325,7 @@ const DistrictDetailPage = () => {
       case 'daily':
         return hourlyData ? (
           <HourlyLine 
-            series={hourlyData.hourlyData}
+            series={hourlyData.currentData}
             title="시간대별 인구 현황"
             height={350}
           />
@@ -346,7 +357,7 @@ const DistrictDetailPage = () => {
         // 에러 1, 2 수정: null 체크 강화
         return monthlyData && monthlyData.monthlyData && monthlyData.monthlyData.length > 0 ? (
           <MonthlyLine 
-            data={monthlyData.monthlyData}
+            data={convertToMonthlyPopulation(monthlyData.monthlyData)}
             title="월별 인구 현황"
             height={350}
           />

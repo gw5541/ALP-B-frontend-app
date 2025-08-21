@@ -13,6 +13,13 @@ export const getToday = (): string => {
   return formatDate(new Date());
 };
 
+// 🔧 추가: 10일 전 날짜 함수 (DB에 데이터가 있는 날짜로 설정)
+export const getTenDaysAgo = (): string => {
+  const date = new Date();
+  date.setDate(date.getDate() - 10);  // 오늘부터 10일 전
+  return formatDate(date);
+};
+
 export const getLastMonth = (): string => {
   const date = new Date();
   date.setMonth(date.getMonth() - 1);
@@ -79,6 +86,7 @@ export const getChartColors = () => ({
   quaternary: '#f59e0b', // amber-500
   male: '#3b82f6',       // blue-500
   female: '#ef4444',     // red-500
+  accent: '#8b5cf6',     // violet-500
 });
 
 export const generateHourLabels = (): string[] => {

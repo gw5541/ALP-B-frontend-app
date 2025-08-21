@@ -5,7 +5,7 @@ import { HourPoint } from '@/lib/types';
 import { formatPopulation, generateHourLabels, getChartColors } from '@/lib/utils';
 
 export interface HourlyLineProps {
-  series: HourPoint[];
+  series: HourPoint[] | undefined | null;  // undefined/null 허용
   title?: string;
   height?: number;
   color?: string;
@@ -20,12 +20,32 @@ const HourlyLine = ({
   const colors = getChartColors();
   const lineColor = color || colors.primary;
 
-  // Format data for Recharts
-  const chartData = series.map(point => ({
-    hour: point.hour,
-    hourLabel: `${point.hour.toString().padStart(2, '0')}:00`,
-    value: point.value
-  }));
+  // 🔧 수정: series 유효성 검사를 맨 위로 이동
+  if (!series || !Array.isArray(series) || series.length === 0) {
+    return (
+      <div className="w-full bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-center" style={{ height }}>
+        <p className="text-gray-500">데이터가 없습니다.</p>
+      </div>
+    );
+  }
+
+  // 🔧 수정: 안전한 데이터 변환
+  const chartData = series
+    .filter(point => point && typeof point.hour === 'number' && typeof point.value === 'number')
+    .map(point => ({
+      hour: point.hour,
+      hourLabel: `${point.hour.toString().padStart(2, '0')}:00`,
+      value: point.value
+    }));
+
+  // 🔧 추가: 변환된 데이터가 비어있는 경우 처리
+  if (chartData.length === 0) {
+    return (
+      <div className="w-full bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-center" style={{ height }}>
+        <p className="text-gray-500">유효한 데이터가 없습니다.</p>
+      </div>
+    );
+  }
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -42,14 +62,6 @@ const HourlyLine = ({
     }
     return null;
   };
-
-  if (!series || series.length === 0) {
-    return (
-      <div className="w-full bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-center" style={{ height }}>
-        <p className="text-gray-500">데이터가 없습니다.</p>
-      </div>
-    );
-  }
 
   return (
     <div className="w-full">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { DISTRICTS } from './SeoulMap';
 
 interface FavoriteDropdownsProps {
@@ -10,38 +10,44 @@ interface FavoriteDropdownsProps {
 
 const FavoriteDropdowns = ({ onFavoriteChange, className = '' }: FavoriteDropdownsProps) => {
   const [selectedFavorites, setSelectedFavorites] = useState<(number | null)[]>([null, null, null]);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  // 컴포넌트 마운트 시 localStorage에서 불러오기
+  // 컴포넌트 마운트 시 localStorage에서 불러오기 (한 번만 실행)
   useEffect(() => {
     const saved = localStorage.getItem('favoriteDistricts');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         setSelectedFavorites(parsed);
-        onFavoriteChange?.(parsed);
       } catch (err) {
         console.error('Failed to load favorites from localStorage:', err);
       }
     }
-  }, [onFavoriteChange]);
+    setIsInitialized(true);
+  }, []); // 의존성 배열에서 onFavoriteChange 제거
 
-  const handleFavoriteChange = (index: number, value: string) => {
+  // 초기화 완료 후 부모에게 알림 (별도 useEffect)
+  useEffect(() => {
+    if (isInitialized) {
+      onFavoriteChange?.(selectedFavorites);
+    }
+  }, [isInitialized, selectedFavorites, onFavoriteChange]);
+
+  const handleFavoriteChange = useCallback((index: number, value: string) => {
     const newFavorites = [...selectedFavorites];
     newFavorites[index] = value === '' ? null : parseInt(value);
     setSelectedFavorites(newFavorites);
     
     // localStorage에 저장
     localStorage.setItem('favoriteDistricts', JSON.stringify(newFavorites));
-    
-    onFavoriteChange?.(newFavorites);
-  };
+  }, [selectedFavorites]);
 
-  const getAvailableDistricts = (currentIndex: number) => {
+  const getAvailableDistricts = useCallback((currentIndex: number) => {
     return DISTRICTS.filter(district => 
       !selectedFavorites.includes(district.id) || 
       selectedFavorites[currentIndex] === district.id
     );
-  };
+  }, [selectedFavorites]);
 
   return (
     <div className={`${className}`}>

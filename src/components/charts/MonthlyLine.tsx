@@ -20,6 +20,15 @@ const MonthlyLine = ({
   const colors = getChartColors();
   const lineColor = color || colors.secondary;
 
+  // 🔧 수정: 데이터 유효성 검사를 map() 호출 전으로 이동
+  if (!data || data.length === 0) {
+    return (
+      <div className="w-full bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-center" style={{ height }}>
+        <p className="text-gray-500">데이터가 없습니다.</p>
+      </div>
+    );
+  }
+
   // Format data for Recharts
   const chartData = data.map(item => ({
     month: item.month,
@@ -45,14 +54,6 @@ const MonthlyLine = ({
     }
     return null;
   };
-
-  if (!data || data.length === 0) {
-    return (
-      <div className="w-full bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-center" style={{ height }}>
-        <p className="text-gray-500">데이터가 없습니다.</p>
-      </div>
-    );
-  }
 
   return (
     <div className="w-full">

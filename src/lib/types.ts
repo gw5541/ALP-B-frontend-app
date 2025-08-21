@@ -49,20 +49,26 @@ export interface HourlyTrendDto {
   districtId: number;
   districtName: string;
   date: string;
-  hourlyData: PopulationPoint[];
-  compare?: {
-    date: string;
-    hourlyData: PopulationPoint[];
-  };
+  currentData: PopulationPoint[];  // 🔧 수정: hourlyData → currentData
+  compareData?: PopulationPoint[] | null;  // 🔧 수정: compare 구조 변경
 }
 
 // 4. Monthly Trends
 export interface MonthlyTrendDto {
   districtId: number;
   districtName: string;
-  monthlyData: MonthlyPopulation[];
+  monthlyData: MonthlyPopulationBackend[];  // 🔧 수정: 백엔드 구조 사용
 }
 
+// 🔧 수정: export 추가
+export interface MonthlyPopulationBackend {
+  yearMonth: string;  // "2025-07" 형태
+  totalAvg: number;
+  maleBucketsAvg: Record<string, number>;
+  femaleBucketsAvg: Record<string, number>;
+}
+
+// 기존 MonthlyPopulation (차트용)
 export interface MonthlyPopulation {
   month: string;
   value: number;
