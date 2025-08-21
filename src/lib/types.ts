@@ -53,7 +53,21 @@ export interface HourlyTrendDto {
   compareData?: PopulationPoint[] | null;  // 🔧 수정: compare 구조 변경
 }
 
-// 4. Monthly Trends
+// 4. Weekly Trends (NEW)
+export interface WeeklyTrendDto {
+  districtId: number;
+  districtName: string;
+  weeklyData: WeeklyPopulationBackend[];
+}
+
+export interface WeeklyPopulationBackend {
+  weekPeriod: string; // 주차 기간 "2025-W33" 형식
+  totalAvg: number;
+  maleBucketsAvg: Record<string, number>;
+  femaleBucketsAvg: Record<string, number>;
+}
+
+// 5. Monthly Trends
 export interface MonthlyTrendDto {
   districtId: number;
   districtName: string;

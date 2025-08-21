@@ -15,6 +15,8 @@ import LoadingSpinner from '@/components/common/LoadingSpinner'; // 추가
 import { 
   HourlyTrendDto,
   MonthlyTrendDto,
+  WeeklyTrendDto,
+  WeeklyPopulationBackend,
   PopulationAggDto,
   AgeDistributionDto,
   PopulationHighlights,
@@ -73,6 +75,7 @@ const DistrictDetailPage = () => {
   const [hourlyData, setHourlyData] = useState<HourlyTrendDto | null>(null);
   const [weeklyData, setWeeklyData] = useState<PopulationAggDto[]>([]);
   const [monthlyData, setMonthlyData] = useState<MonthlyTrendDto | null>(null);
+  const [weeklyMonthlyData, setWeeklyMonthlyData] = useState<WeeklyTrendDto | null>(null);
   const [ageDistribution, setAgeDistribution] = useState<AgeDistributionDto | null>(null);
   const [highlights, setHighlights] = useState<PopulationHighlights | null>(null);
   const [loading, setLoading] = useState(false);
@@ -348,13 +351,7 @@ const DistrictDetailPage = () => {
     }
   };
 
-  // useEffect에서 테스트 호출
-  useEffect(() => {
-    if (district) {
-      testStatsAPI(); // 임시 테스트
-      loadTabData();
-    }
-  }, [district, activeTab, filters.date, filters.from, filters.to, filters.gender, filters.ageBucket]);
+  // 🔧 제거: 중복된 useEffect 제거 (line 112에 이미 있음)
 
 
   const loadTabData = async () => {
@@ -455,15 +452,27 @@ const DistrictDetailPage = () => {
         setWeeklyData(weeklyResponse);
         console.log('✅ Weekly data loaded (20 days ago base week):', weeklyResponse);
       } else if (activeTab === 'monthly') {
-        console.log('📊 Loading monthly data (12 months)');
-        const monthlyResponse = await apiClient.getMonthlyTrends({
+        console.log('📊 Loading weekly monthly data (current month weeks)');
+        
+        // 현재 조회 날짜가 속한 월의 주차별 데이터 로드
+        const currentDate = new Date(apiParams.date);
+        const currentMonth = currentDate.getMonth() + 1; // 1-12
+        const currentYear = currentDate.getFullYear();
+        
+        console.log('📅 Current month calculation:', {
+          baseDate: apiParams.date,
+          currentMonth,
+          currentYear
+        });
+        
+        const weeklyMonthlyResponse = await apiClient.getWeeklyTrends({
           districtId: apiParams.districtId,
-          months: 12,
+          weeks: 5, // 한 달은 최대 5주차까지
           gender: apiParams.gender,
           ageBucket: apiParams.ageBucket
         });
-        setMonthlyData(monthlyResponse);
-        console.log('✅ Monthly data loaded:', monthlyResponse);
+        setWeeklyMonthlyData(weeklyMonthlyResponse);
+        console.log('✅ Weekly monthly data loaded:', weeklyMonthlyResponse);
       }
 
     } catch (err) {
@@ -634,6 +643,38 @@ const DistrictDetailPage = () => {
     }));
   };
 
+  // 🔧 추가: 주간 데이터를 월간 차트용 데이터로 변환하는 함수  
+  const convertWeeklyToMonthlyPopulation = (weeklyData: WeeklyPopulationBackend[]): MonthlyPopulation[] => {
+    console.log('🔄 Converting weekly data to monthly chart format:', weeklyData);
+    
+    if (!weeklyData || weeklyData.length === 0) {
+      console.log('❌ No weekly data for conversion');
+      return [];
+    }
+    
+    // weekPeriod "2025-W33" 형식에서 주차 번호를 추출하고 정렬
+    const sortedWeeklyData = weeklyData
+      .map(item => {
+        // "2025-W33" -> 33
+        const weekMatch = item.weekPeriod.match(/W(\d+)/);
+        const weekNumber = weekMatch ? parseInt(weekMatch[1]) : 0;
+        return { ...item, weekNumber };
+      })
+      .sort((a, b) => a.weekNumber - b.weekNumber); // 주차 순으로 정렬
+    
+    console.log('📊 Sorted weekly data:', sortedWeeklyData);
+    
+    // 차트 데이터 생성 (실제 데이터가 있는 주차만 표시)
+    const chartData: MonthlyPopulation[] = sortedWeeklyData.map((item, index) => ({
+      month: `${index + 1}주차`, // 1주차, 2주차, 3주차...
+      value: item.totalAvg,
+      districtId: district?.id
+    }));
+    
+    console.log('✅ Converted weekly to monthly chart data:', chartData);
+    return chartData;
+  };
+
   // 🔧 수정: DAILY 데이터를 요일별 차트 데이터로 변환하는 함수
   const convertToWeeklyChartData = (dailyStats: PopulationAggDto[]) => {
     console.log('🔄 Converting daily stats to weekday chart data:', dailyStats);
@@ -794,22 +835,22 @@ const DistrictDetailPage = () => {
         }
 
       case 'monthly':
-        // 🔧 수정: 월간 데이터 검증 개선
-        const hasMonthlyData = monthlyData && 
-          monthlyData.monthlyData && 
-          Array.isArray(monthlyData.monthlyData) && 
-          monthlyData.monthlyData.length > 0;
+        // 🔧 수정: 주차별 데이터 검증으로 변경
+        const hasWeeklyMonthlyData = weeklyMonthlyData && 
+          weeklyMonthlyData.weeklyData && 
+          Array.isArray(weeklyMonthlyData.weeklyData) && 
+          weeklyMonthlyData.weeklyData.length > 0;
 
-        console.log('📊 Monthly data validation:', {
-          monthlyData,
-          hasMonthlyDataField: !!monthlyData?.monthlyData,
-          dataLength: monthlyData?.monthlyData?.length,
-          hasMonthlyData
+        console.log('📊 Weekly monthly data validation:', {
+          weeklyMonthlyData,
+          hasWeeklyDataField: !!weeklyMonthlyData?.weeklyData,
+          dataLength: weeklyMonthlyData?.weeklyData?.length,
+          hasWeeklyMonthlyData
         });
 
-        if (hasMonthlyData) {
-          const convertedData = convertToMonthlyPopulation(monthlyData.monthlyData);
-          console.log('✅ Converted monthly data:', convertedData);
+        if (hasWeeklyMonthlyData) {
+          const convertedData = convertWeeklyToMonthlyPopulation(weeklyMonthlyData.weeklyData);
+          console.log('✅ Converted weekly monthly data:', convertedData);
           
           return (
           <MonthlyLine 
@@ -823,8 +864,8 @@ const DistrictDetailPage = () => {
           return (
             <div className="h-64 flex items-center justify-center text-gray-500">
               <div className="text-center">
-                <p>월별 데이터가 없습니다</p>
-                <p className="text-sm mt-1">데이터 수집 기간을 확인해보세요</p>
+                <p>해당 월의 주차별 데이터가 없습니다</p>
+                <p className="text-sm mt-1">다른 날짜를 선택해보세요</p>
               </div>
             </div>
           );

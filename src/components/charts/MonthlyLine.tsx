@@ -32,10 +32,12 @@ const MonthlyLine = ({
   // Format data for Recharts
   const chartData = data.map(item => ({
     month: item.month,
-    monthLabel: new Date(item.month + '-01').toLocaleDateString('ko-KR', { 
-      year: 'numeric', 
-      month: 'short' 
-    }),
+    monthLabel: item.month.includes('주차') 
+      ? item.month  // 주차 데이터는 그대로 사용 ("1주차", "2주차"...)
+      : new Date(item.month + '-01').toLocaleDateString('ko-KR', { 
+          year: 'numeric', 
+          month: 'short' 
+        }),
     value: item.value
   }));
 

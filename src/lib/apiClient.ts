@@ -15,6 +15,8 @@ import {
   PopulationAggDto,
   HourlyTrendDto,
   MonthlyTrendDto,
+  WeeklyTrendDto,
+  WeeklyPopulationBackend,
   AgeDistributionDto,
   FavoriteDto,
   FavoriteCreateRequest,
@@ -265,7 +267,29 @@ class ApiClient {
     return this.client.get(`/population/trends/hourly?${queryParams.toString()}`);
   }
 
-  // D. 월별 트렌드 - 에러 3 수정
+  // D. 주간 트렌드 (NEW)
+  async getWeeklyTrends(params: {
+    districtId?: number;
+    weeks?: number;
+    gender?: string;
+    ageBucket?: AgeBucket | string;
+  }): Promise<WeeklyTrendDto> {
+    const queryParams = new URLSearchParams();
+    
+    if (params.districtId) {
+      const districtCode = this.getDistrictCode(params.districtId);
+      if (districtCode) {
+        queryParams.append('districtId', districtCode);
+      }
+    }
+    if (params.weeks) queryParams.append('weeks', params.weeks.toString());
+    if (params.gender && params.gender !== 'all') queryParams.append('gender', params.gender);
+    if (params.ageBucket && params.ageBucket !== 'all') queryParams.append('ageBucket', params.ageBucket);
+
+    return await this.client.get(`/population/trends/weekly?${queryParams.toString()}`);
+  }
+
+  // E. 월별 트렌드 - 에러 3 수정
   async getMonthlyTrends(params: {
     districtId?: number;
     months?: number;
