@@ -136,6 +136,9 @@ const Pyramid = ({
 
   return (
     <div className="w-full" role="img" aria-label={`${title} 연령대별 인구 분포 차트`}>
+      {title && (
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">{title}</h3>
+      )}
       <ResponsiveContainer width="100%" height={height}>
         <BarChart 
           data={chartData}

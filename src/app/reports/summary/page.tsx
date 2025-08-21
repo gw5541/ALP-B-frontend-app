@@ -417,6 +417,8 @@ const ReportsSummaryContent = () => {
             const favoriteAgeResponses = await Promise.all(favoriteAgePromises);
             const validAgeDistributions = favoriteAgeResponses.filter((dist): dist is AgeDistributionDto => dist !== null);
             
+
+            
             setFavoriteAgeDistributions(validAgeDistributions);
             setAgeDistribution(null); // 관심 지역 모드에서는 기존 단일 데이터 초기화
           } else {
@@ -711,16 +713,17 @@ const ReportsSummaryContent = () => {
 
       // 관심 지역별 개별 차트들
       if (favoriteAgeDistributions.length > 0) {
+        const periodLabel = '일간 평균'; // 연령대별 분포는 항상 일간 데이터 사용
         return (
           <div className="space-y-6">
-            <h4 className="text-lg font-medium text-gray-900 mb-4">관심 지역별 연령대별 인구 분포</h4>
+            <h4 className="text-lg font-medium text-gray-900 mb-4">{periodLabel} 관심 지역별 연령대별 인구 분포</h4>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {favoriteAgeDistributions.map((data, index) => (
-                <div key={data.districtId || index} className="bg-white border border-gray-200 rounded-lg p-4">
+                <div key={data.districtId || index} className="bg-white border border-gray-200 rounded-lg p-6">
                   <Pyramid 
                     data={data.ageDistribution}
                     title={`${data.districtName || `자치구 ${data.districtId}`}`}
-                    height={280}
+                    height={320}
                   />
                 </div>
               ))}
@@ -797,21 +800,6 @@ const ReportsSummaryContent = () => {
             </div>
           </div>
 
-          {/* Summary Table */}
-          <div className="mb-8">
-          <Card title="월간 집계 현황" subtitle={getTableSubtitle()}>
-            {loading ? (
-              <SkeletonTable rows={10} cols={5} />
-            ) : error ? (
-              <div className="text-center py-8 text-red-600">
-                {error}
-              </div>
-            ) : (
-              <StatTable data={getUniqueDistrictStats(monthlyStats)} />
-            )}
-          </Card>
-          </div>
-
           {/* Chart Section */}
           <div className="mb-8">
             <Card>
@@ -883,6 +871,21 @@ const ReportsSummaryContent = () => {
                 </div>
               )}
             </Card>
+          </div>
+
+          {/* Summary Table */}
+          <div className="mb-8">
+          <Card title="월간 집계 현황" subtitle={getTableSubtitle()}>
+            {loading ? (
+              <SkeletonTable rows={10} cols={5} />
+            ) : error ? (
+              <div className="text-center py-8 text-red-600">
+                {error}
+              </div>
+            ) : (
+              <StatTable data={getUniqueDistrictStats(monthlyStats)} />
+            )}
+          </Card>
           </div>
 
           {/* Additional Actions */}
